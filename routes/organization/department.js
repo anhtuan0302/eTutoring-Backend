@@ -1,26 +1,20 @@
 const express = require('express');
 const router = express.Router();
 
-const DepartmentModel = require('../../models/organization/department');
+const auth = require('../../middleware/auth');
+const roleCheck = require('../../middleware/roleCheck');
 
-router.post('/create', async (req, res) => {
-    try {
-        const { name, description } = req.body;
-        const department = await DepartmentModel.create({ name, description });
-        res.status(201).json(department);
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-});
+const departmentController = require('../../controllers/organization/department');
 
-router.get('/', async (req, res) => {
-    try {
-        const departments = await DepartmentModel.find();
-        res.status(200).json(departments);
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-});
+router.get('/', auth, departmentController.getAllDepartments);
+
+router.get('/:id', auth, departmentController.getDepartmentById);
+
+router.post('/', auth, roleCheck(['admin', 'staff']), departmentController.createDepartment);
+
+router.patch('/:id', auth, roleCheck(['admin', 'staff']), departmentController.updateDepartment);
+
+router.delete('/:id', auth, roleCheck(['admin', 'staff']), departmentController.deleteDepartment);
 
 module.exports = router;
 

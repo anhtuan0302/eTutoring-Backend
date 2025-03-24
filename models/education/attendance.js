@@ -1,12 +1,12 @@
 const mongoose = require('mongoose');
 
 const attendanceSchema = new mongoose.Schema({
-  class_schedule: {
+  class_schedule_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'classSchedule',
     required: true
   },
-  student: {
+  student_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'student',
     required: true
@@ -29,6 +29,6 @@ const attendanceSchema = new mongoose.Schema({
 });
 
 // Đảm bảo mỗi sinh viên chỉ có một bản ghi điểm danh cho mỗi lịch học
-attendanceSchema.index({ class_schedule: 1, student: 1 }, { unique: true });
+attendanceSchema.index({ class_schedule_id: 1, student_id: 1 }, { unique: true });
 
 module.exports = mongoose.model('attendance', attendanceSchema);

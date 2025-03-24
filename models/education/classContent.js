@@ -36,7 +36,7 @@ const attachmentSchema = new mongoose.Schema({
 });
 
 const classContentSchema = new mongoose.Schema({
-  class: {
+  class_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'classInfo',
     required: true
@@ -65,5 +65,7 @@ const classContentSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+classContentSchema.index({ class_id: 1, content_type: 1 });
 
 module.exports = mongoose.model('classContent', classContentSchema);

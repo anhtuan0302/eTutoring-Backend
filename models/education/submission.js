@@ -36,12 +36,12 @@ const attachmentSchema = new mongoose.Schema({
 });
 
 const submissionSchema = new mongoose.Schema({
-  assignment: {
+  assignment_id: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'assignment',
+    ref: 'classContent',
     required: true
   },
-  student: {
+  student_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'student',
     required: true
@@ -74,6 +74,10 @@ const submissionSchema = new mongoose.Schema({
     },
     grade_at: {
       type: Date
+    },
+    graded_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'tutor'
     }
   }
 }, {
@@ -81,6 +85,6 @@ const submissionSchema = new mongoose.Schema({
 });
 
 // Đảm bảo mỗi sinh viên chỉ nộp một bài cho mỗi assignment
-submissionSchema.index({ assignment: 1, student: 1 }, { unique: true });
+submissionSchema.index({ assignment_id: 1, student_id: 1 }, { unique: true });
 
 module.exports = mongoose.model('submission', submissionSchema);

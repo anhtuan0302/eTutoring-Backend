@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const classScheduleSchema = new mongoose.Schema({
-  class: {
+  class_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'classInfo',
     required: true
@@ -35,5 +35,7 @@ const classScheduleSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+classScheduleSchema.index({ class_id: 1, start_time: 1 });
 
 module.exports = mongoose.model('classSchedule', classScheduleSchema);
