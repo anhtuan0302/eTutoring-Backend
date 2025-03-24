@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const staffSchema = new mongoose.Schema({
-  user: {
+  user_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'user',
     unique: true
@@ -12,7 +12,7 @@ const staffSchema = new mongoose.Schema({
     unique: true,
     trim: true
   },
-  department: {
+  department_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'department',
     required: true

@@ -10,6 +10,19 @@ const enrollmentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'student',
     required: true
+  },
+  review: {
+    rating: {
+      type: Number,
+      min: 1,
+      max: 5
+    },
+    comment: {
+      type: String
+    },
+    review_at: {
+      type: Date
+    }
   }
 }, {
   timestamps: true

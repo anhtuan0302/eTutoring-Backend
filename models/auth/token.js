@@ -8,12 +8,13 @@ const tokenSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['access', 'refresh'],
+        enum: ['access', 'refresh', 'password-reset'],
         required: true
     },
     value: {
         type: String,
-        required: true
+        required: true,
+        index: true
     },
     created_at: {
         type: Date,
@@ -21,11 +22,13 @@ const tokenSchema = new mongoose.Schema({
     },
     expires_at: {
         type: Date,
-        required: true
+        required: true,
+        index: true
     },
     is_revoked: {
         type: Boolean,
-        default: false
+        default: false,
+        index: true
     },
     revoked_at: {
         type: Date
@@ -34,5 +37,9 @@ const tokenSchema = new mongoose.Schema({
         type: String
     }
 });
+
+// Index để tăng tốc độ tìm kiếm token
+tokenSchema.index({ user_id: 1, type: 1, is_revoked: 1 });
+tokenSchema.index({ value: 1, type: 1, is_revoked: 1 });
 
 module.exports = mongoose.model('Token', tokenSchema);

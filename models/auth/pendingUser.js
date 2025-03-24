@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const pendingUserSchema = new mongoose.Schema({
-  user_type: {
+  role: {
     type: String,
     enum: ['student', 'tutor', 'staff', 'admin'],
     required: true

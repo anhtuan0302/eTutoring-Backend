@@ -1,19 +1,24 @@
 const mongoose = require('mongoose');
 
 const postCommentSchema = new mongoose.Schema({
-  post: {
+  post_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'post',
     required: true
   },
-  user: {
+  user_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'user',
     required: true
   },
   content: {
     type: String,
-    required: true
+    required: true,
+    maxlength: 1000
+  },
+  is_deleted: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true

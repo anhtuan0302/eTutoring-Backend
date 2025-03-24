@@ -17,11 +17,6 @@ const courseSchema = new mongoose.Schema({
   description: {
     type: String
   },
-  course_category: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'courseCategory',
-    required: true
-  },
   is_deleted: {
     type: Boolean,
     default: false

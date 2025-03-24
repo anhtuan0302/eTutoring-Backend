@@ -35,67 +35,35 @@ const attachmentSchema = new mongoose.Schema({
   }
 });
 
-const postSchema = new mongoose.Schema({
-  user_id: {
+const classContentSchema = new mongoose.Schema({
+  class: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'user',
+    ref: 'classInfo',
     required: true
   },
   title: {
     type: String,
     required: true,
-    trim: true,
-    maxlength: 255,
+    trim: true
   },
-  content: {
+  description: {
+    type: String
+  },
+  content_type: {
     type: String,
-    required: true,
-    minlength: 10
-  },
-  post_category_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'postCategory',
+    enum: ['material', 'assignment'],
     required: true
   },
+  duedate: {
+    type: Date
+  },
   attachments: [attachmentSchema],
-  status: {
-    type: String,
-    enum: ['draft', 'pending', 'approved', 'rejected'],
-    default: 'pending'
-  },
-  view_count: {
-    type: Number,
-    default: 0
-  },
-  viewed_by: [{  
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'user'
-  }],
   is_deleted: {
     type: Boolean,
     default: false
-  },
-  moderated_info: {
-    moderated_at: Date,
-    moderated_by: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'user'
-    },
-    reason: String
   }
 }, {
   timestamps: true
 });
 
-postSchema.pre('save', async function(next) {
-  if (this.isModified('is_deleted') && this.is_deleted) {
-    this.attachments.forEach(attachment => {
-      fs.unlink(attachment.file_path, (err) => {
-        if (err) console.error('Error deleting file:', err);
-      });
-    });
-  }
-  next();
-});
-
-module.exports = mongoose.model('post', postSchema);
+module.exports = mongoose.model('classContent', classContentSchema);

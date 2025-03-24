@@ -1,12 +1,12 @@
 const mongoose = require('mongoose');
 
 const postReactionSchema = new mongoose.Schema({
-  post: {
+  post_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'post',
     required: true
   },
-  user: {
+  user_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'user',
     required: true
@@ -21,6 +21,6 @@ const postReactionSchema = new mongoose.Schema({
 });
 
 // Đảm bảo mỗi người dùng chỉ có một loại phản ứng cho mỗi bài viết
-postReactionSchema.index({ post: 1, user: 1 }, { unique: true });
+postReactionSchema.index({ post_id: 1, user_id: 1 }, { unique: true });
 
 module.exports = mongoose.model('postReaction', postReactionSchema);

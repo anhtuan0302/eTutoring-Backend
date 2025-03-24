@@ -6,25 +6,21 @@ const loginHistorySchema = new mongoose.Schema({
     ref: 'user',
     required: true
   },
-  token: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'token'
-  },
-  history_time: {
-    type: Date,
-    default: Date.now
-  },
   ipaddress: {
-    type: String
-  },
-  device: {
     type: String
   },
   browser: {
     type: String
   },
+  device: {
+    type: String
+  },
   os: {
     type: String
+  },
+  history_time: {
+    type: Date,
+    default: Date.now
   }
 });
 
