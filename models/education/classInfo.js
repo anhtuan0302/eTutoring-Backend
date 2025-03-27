@@ -39,10 +39,6 @@ const classSchema = new mongoose.Schema({
   },
   end_date: {
     type: Date
-  },
-  is_deleted: {
-    type: Boolean,
-    default: false
   }
 }, {
   timestamps: true

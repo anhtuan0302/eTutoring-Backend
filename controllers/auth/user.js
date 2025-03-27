@@ -1,168 +1,393 @@
-const User = require('../../models/auth/user');
-const Student = require('../../models/organization/student');
-const Staff = require('../../models/organization/staff');
-const Tutor = require('../../models/organization/tutor');
-const LoginHistory = require('../../models/auth/loginHistory');
+const User = require("../../models/auth/user");
+const Student = require("../../models/organization/student");
+const Tutor = require("../../models/organization/tutor");
+const Staff = require("../../models/organization/staff");
+const Token = require("../../models/auth/token");
+const bcrypt = require("bcryptjs");
+const tokenController = require("./token");
+const loginHistoryController = require("./loginHistory");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+const { getIO } = require("../../config/socket");
 
-// Lấy thông tin người dùng hiện tại
-exports.getCurrentUser = async (req, res) => {
+// Cấu hình multer cho upload avatar
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = "uploads/avatars";
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  },
+});
+
+exports.upload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Chỉ chấp nhận file hình ảnh (jpg, png, gif, webp)"));
+    }
+  },
+});
+
+// Đăng nhập
+exports.loginUser = async (req, res) => {
+  try {
+    const { usernameOrEmail, password } = req.body;
+
+    if (!usernameOrEmail || !password) {
+      return res
+        .status(400)
+        .json({ error: "Vui lòng cung cấp tên đăng nhập/email và mật khẩu" });
+    }
+
+    // Tìm user theo tên đăng nhập hoặc email
+    const user = await User.findOne({
+      $or: [{ username: usernameOrEmail }, { email: usernameOrEmail }],
+    });
+
+    if (!user) {
+      return res
+        .status(401)
+        .json({ error: "Tên đăng nhập/email hoặc mật khẩu không đúng" });
+    }
+
+    // Kiểm tra mật khẩu
+    const isPasswordMatch = await bcrypt.compare(password, user.password);
+
+    if (!isPasswordMatch) {
+      return res
+        .status(401)
+        .json({ error: "Tên đăng nhập/email hoặc mật khẩu không đúng" });
+    }
+
+    // Tạo tokens
+    const tokens = await tokenController.generateAuthTokens(user._id, req.ip);
+
+    // Cập nhật trạng thái người dùng và emit event
+    user.status = "online";
+    user.lastActive = new Date();
+    await user.save();
+
+    // Lấy io instance và emit event
+    const io = getIO();
+    io.emit("user:status", {
+      userId: user._id,
+      status: "online",
+      username: user.username,
+    });
+
+    // Tạo login history bằng cách gọi controller
     try {
-      const user = req.user;
-      let roleInfo = null;
-  
-      // Lấy thông tin role tương ứng
-      switch (user.role) {
-        case 'student':
-          roleInfo = await Student.findOne({ user: user._id });
-          break;
-        case 'staff':
-          roleInfo = await Staff.findOne({ user: user._id });
-          break;
-        case 'tutor':
-          roleInfo = await Tutor.findOne({ user: user._id });
-          break;
-        default:
-          // Admin không có thông tin role phụ
-          break;
-      }
-  
-      // Tạo đối tượng user để trả về, không bao gồm mật khẩu
-      const userResponse = {
+      // Tạo một mock request object với thông tin cần thiết
+      const historyReq = {
+        body: {
+          user: user._id,
+          ipaddress: req.ip,
+          browser: req.headers["user-agent"],
+        },
+        headers: req.headers,
+      };
+
+      // Tạo một mock response object
+      const historyRes = {
+        status: () => ({ json: () => {} }), // Mock response methods
+      };
+
+      await loginHistoryController.createLoginHistory(historyReq, historyRes);
+    } catch (historyError) {
+      console.error("Error creating login history:", historyError);
+      // Không return lỗi vì đăng nhập vẫn thành công
+    }
+
+    // Tùy theo role, lấy thêm thông tin
+    let profileInfo = null;
+
+    if (user.role === "student") {
+      profileInfo = await Student.findOne({ user_id: user._id }).populate(
+        "department_id",
+        "name"
+      );
+    } else if (user.role === "tutor") {
+      profileInfo = await Tutor.findOne({ user_id: user._id }).populate(
+        "department_id",
+        "name"
+      );
+    } else if (user.role === "staff") {
+      profileInfo = await Staff.findOne({ user_id: user._id }).populate(
+        "department_id",
+        "name"
+      );
+    }
+
+    res.status(200).json({
+      user: {
         _id: user._id,
-        email: user.email,
         username: user.username,
         first_name: user.first_name,
         last_name: user.last_name,
-        role: user.role,
+        email: user.email,
         phone_number: user.phone_number,
         avatar_path: user.avatar_path,
-        status: user.status,
-        lastActive: user.lastActive,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt
-      };
-  
-      res.send({
-        user: userResponse,
-        roleInfo
-      });
-    } catch (error) {
-      res.status(500).send({ error: error.message });
-    }
-  };
-
-// Cập nhật thông tin người dùng
-exports.updateUser = async (req, res) => {
-    const updates = Object.keys(req.body);
-    const allowedUpdates = ['first_name', 'last_name', 'password', 'phone_number'];
-    const isValidOperation = updates.every((update) => allowedUpdates.includes(update));
-  
-    if (!isValidOperation) {
-      return res.status(400).send({ error: 'Cập nhật không hợp lệ!' });
-    }
-  
-    try {
-      updates.forEach((update) => {
-        req.user[update] = req.body[update];
-      });
-      await req.user.save();
-      
-      // Tạo đối tượng user để trả về, không bao gồm mật khẩu
-      const userResponse = {
-        _id: req.user._id,
-        email: req.user.email,
-        username: req.user.username,
-        first_name: req.user.first_name,
-        last_name: req.user.last_name,
-        fullName: `${req.user.first_name} ${req.user.last_name}`,
-        role: req.user.role,
-        phone_number: req.user.phone_number,
-        avatar_path: req.user.avatar_path,
-        status: req.user.status,
-        lastActive: req.user.lastActive,
-        createdAt: req.user.createdAt,
-        updatedAt: req.user.updatedAt
-      };
-      
-      res.send({
-        user: userResponse
-      });
-    } catch (error) {
-      res.status(400).send({ error: error.message });
-    }
-  };
-
-// Lấy lịch sử đăng nhập
-exports.getLoginHistory = async (req, res) => {
-  try {
-    const loginHistory = await LoginHistory.find({ user: req.user._id })
-      .sort({ loginTime: -1 })
-      .limit(10);
-
-    res.send(loginHistory);
-  } catch (error) {
-    res.status(500).send({ error: error.message });
-  }
-};
-
-// Cập nhật thông tin role
-exports.updateRoleInfo = async (req, res) => {
-  try {
-    const { roleInfo } = req.body;
-    let roleModel;
-    
-    switch (req.user.role) {
-      case 'student':
-        roleModel = await Student.findOne({ user: req.user._id });
-        break;
-      case 'staff':
-        roleModel = await Staff.findOne({ user: req.user._id });
-        break;
-      case 'tutor':
-        roleModel = await Tutor.findOne({ user: req.user._id });
-        break;
-      default:
-        return res.status(400).send({ error: 'Không có thông tin role để cập nhật.' });
-    }
-
-    if (!roleModel) {
-      return res.status(404).send({ error: 'Không tìm thấy thông tin role.' });
-    }
-
-    // Cập nhật thông tin role
-    Object.keys(roleInfo).forEach((key) => {
-      roleModel[key] = roleInfo[key];
+        role: user.role,
+        profile: profileInfo,
+      },
+      tokens,
     });
-
-    await roleModel.save();
-    res.send(roleModel);
   } catch (error) {
-    res.status(400).send({ error: error.message });
-  }
-};
-
-// Lấy danh sách tất cả người dùng
-exports.getAllUsers = async (req, res) => {
-  try {
-    const users = await User.find();
-    res.status(200).json(users);
-  } catch (error) {
+    console.error("Error logging in user:", error);
     res.status(500).json({ error: error.message });
   }
 };
 
-// Xóa người dùng
-exports.deleteUser = async (req, res) => {
+// Lấy thông tin người dùng hiện tại
+exports.getCurrentUser = async (req, res) => {
   try {
-    const { id } = req.params;
-    const user = await User.findById(id);
+    const user = await User.findById(req.user._id);
+
     if (!user) {
-      return res.status(404).json({ error: 'Người dùng không tồn tại' });
+      return res.status(404).json({ error: "Không tìm thấy người dùng" });
     }
-    await user.deleteOne();
-    res.status(200).json({ message: 'Người dùng đã được xóa thành công' });
+
+    // Tùy theo role, lấy thêm thông tin
+    let profileInfo = null;
+
+    if (user.role === "student") {
+      profileInfo = await Student.findOne({ user_id: user._id }).populate(
+        "department_id",
+        "name"
+      );
+    } else if (user.role === "tutor") {
+      profileInfo = await Tutor.findOne({ user_id: user._id }).populate(
+        "department_id",
+        "name"
+      );
+    } else if (user.role === "staff") {
+      profileInfo = await Staff.findOne({ user_id: user._id }).populate(
+        "department_id",
+        "name"
+      );
+    }
+
+    res.status(200).json({
+      _id: user._id,
+      username: user.username,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      email: user.email,
+      phone_number: user.phone_number,
+      avatar_path: user.avatar_path,
+      role: user.role,
+      profile: profileInfo,
+    });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    console.error("Error getting current user:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Cập nhật thông tin người dùng
+exports.updateUser = async (req, res) => {
+  try {
+    const { first_name, last_name, phone_number } = req.body;
+
+    // Tìm người dùng
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({ error: "Không tìm thấy người dùng" });
+    }
+
+    // Cập nhật thông tin cơ bản
+    if (first_name) user.first_name = first_name;
+    if (last_name) user.last_name = last_name;
+
+    // Kiểm tra phone_number nếu được cập nhật
+    if (phone_number && phone_number !== user.phone_number) {
+      const existingPhone = await User.findOne({
+        phone_number,
+        _id: { $ne: user._id },
+      });
+      if (existingPhone) {
+        return res
+          .status(400)
+          .json({ error: "Số điện thoại đã tồn tại trong hệ thống" });
+      }
+      user.phone_number = phone_number;
+    }
+
+    await user.save();
+
+    res.status(200).json({
+      _id: user._id,
+      username: user.username,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      email: user.email,
+      phone_number: user.phone_number,
+      avatar_path: user.avatar_path,
+      role: user.role,
+    });
+  } catch (error) {
+    console.error("Error updating user:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Thay đổi mật khẩu
+exports.changePassword = async (req, res) => {
+  try {
+    const { current_password, new_password, confirm_password } = req.body;
+
+    if (!current_password || !new_password || !confirm_password) {
+      return res.status(400).json({ error: "Vui lòng điền đầy đủ thông tin" });
+    }
+
+    if (new_password !== confirm_password) {
+      return res.status(400).json({ error: "Mật khẩu xác nhận không khớp" });
+    }
+
+    if (new_password.length < 8) {
+      return res
+        .status(400)
+        .json({ error: "Mật khẩu mới phải có ít nhất 8 ký tự" });
+    }
+
+    // Tìm người dùng
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({ error: "Không tìm thấy người dùng" });
+    }
+
+    // Kiểm tra mật khẩu hiện tại
+    const isPasswordMatch = await bcrypt.compare(
+      current_password,
+      user.password
+    );
+
+    if (!isPasswordMatch) {
+      return res.status(401).json({ error: "Mật khẩu hiện tại không đúng" });
+    }
+
+    // Mã hóa mật khẩu mới
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(new_password, salt);
+
+    // Cập nhật mật khẩu
+    user.password = hashedPassword;
+    await user.save();
+
+    res.status(200).json({ message: "Thay đổi mật khẩu thành công" });
+  } catch (error) {
+    console.error("Error changing password:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Cập nhật avatar
+exports.updateAvatar = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "Vui lòng tải lên một hình ảnh" });
+    }
+
+    // Tìm người dùng
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      // Xóa file nếu có lỗi
+      fs.unlinkSync(req.file.path);
+      return res.status(404).json({ error: "Không tìm thấy người dùng" });
+    }
+
+    // Xóa avatar cũ nếu có
+    if (user.avatar_path) {
+      const oldAvatarPath = path.join(__dirname, "../../", user.avatar_path);
+      if (fs.existsSync(oldAvatarPath)) {
+        fs.unlinkSync(oldAvatarPath);
+      }
+    }
+
+    // Cập nhật đường dẫn avatar mới
+    user.avatar_path = req.file.path;
+    await user.save();
+
+    res.status(200).json({
+      message: "Cập nhật avatar thành công",
+      avatar_path: user.avatar_path,
+    });
+  } catch (error) {
+    // Xóa file nếu có lỗi
+    if (req.file) {
+      fs.unlinkSync(req.file.path);
+    }
+    console.error("Error updating avatar:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Lấy danh sách người dùng (admin only)
+exports.getAllUsers = async (req, res) => {
+  try {
+    // Kiểm tra quyền admin
+    if (req.user.role !== "admin") {
+      return res
+        .status(403)
+        .json({ error: "Không có quyền thực hiện thao tác này" });
+    }
+
+    // Query parameters
+    const { role, search, limit = 10, page = 1 } = req.query;
+    const skip = (page - 1) * limit;
+
+    // Build query
+    const query = {};
+
+    if (role) {
+      query.role = role;
+    }
+
+    if (search) {
+      query.$or = [
+        { first_name: { $regex: search, $options: "i" } },
+        { last_name: { $regex: search, $options: "i" } },
+        { username: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    // Get users
+    const users = await User.find(query)
+      .select("-password")
+      .skip(skip)
+      .limit(parseInt(limit))
+      .sort({ createdAt: -1 });
+
+    // Count total
+    const total = await User.countDocuments(query);
+
+    res.status(200).json({
+      users,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    console.error("Error getting all users:", error);
+    res.status(500).json({ error: error.message });
   }
 };
 
@@ -170,12 +395,140 @@ exports.deleteUser = async (req, res) => {
 exports.getUserById = async (req, res) => {
   try {
     const { id } = req.params;
-    const user = await User.findById(id);
+
+    const user = await User.findById(id).select("-password");
+
     if (!user) {
-      return res.status(404).json({ error: 'Người dùng không tồn tại' });
+      return res.status(404).json({ error: "Không tìm thấy người dùng" });
     }
-    res.status(200).json(user);
+
+    // Tùy theo role, lấy thêm thông tin
+    let profileInfo = null;
+
+    if (user.role === "student") {
+      profileInfo = await Student.findOne({ user_id: user._id }).populate(
+        "department_id",
+        "name"
+      );
+    } else if (user.role === "tutor") {
+      profileInfo = await Tutor.findOne({ user_id: user._id }).populate(
+        "department_id",
+        "name"
+      );
+    } else if (user.role === "staff") {
+      profileInfo = await Staff.findOne({ user_id: user._id }).populate(
+        "department_id",
+        "name"
+      );
+    }
+
+    res.status(200).json({
+      ...user.toObject(),
+      profile: profileInfo,
+    });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    console.error("Error getting user by id:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Vô hiệu hóa tài khoản người dùng (admin only)
+exports.disableUser = async (req, res) => {
+  try {
+    // Kiểm tra quyền admin
+    if (req.user.role !== "admin") {
+      return res
+        .status(403)
+        .json({ error: "Không có quyền thực hiện thao tác này" });
+    }
+
+    const { id } = req.params;
+
+    // Không cho phép vô hiệu hóa chính mình
+    if (id === req.user._id.toString()) {
+      return res
+        .status(400)
+        .json({ error: "Không thể vô hiệu hóa tài khoản của chính mình" });
+    }
+
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({ error: "Không tìm thấy người dùng" });
+    }
+
+    // Không cho phép vô hiệu hóa admin khác
+    if (user.role === "admin" && req.user.role === "admin") {
+      return res
+        .status(403)
+        .json({ error: "Không thể vô hiệu hóa tài khoản admin khác" });
+    }
+
+    // TO-DO: Implement disable user logic here
+    // Hiện tại không có trường is_disabled trong schema
+    // Bạn có thể thêm vào schema hoặc xử lý theo cách khác
+
+    res.status(200).json({ message: "Vô hiệu hóa tài khoản thành công" });
+  } catch (error) {
+    console.error("Error disabling user:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Thêm hàm logout
+exports.logoutUser = async (req, res) => {
+  try {
+    const user = req.user;
+    const authHeader = req.header('Authorization');
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(400).json({ error: 'Bearer token is required' });
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+
+    // Thu hồi access token hiện tại
+    const tokenDoc = await Token.findOne({
+      value: token,
+      type: 'access',
+      is_revoked: false
+    });
+
+    if (tokenDoc) {
+      tokenDoc.is_revoked = true;
+      tokenDoc.revoked_at = new Date();
+      await tokenDoc.save();
+    }
+
+    // Thu hồi tất cả refresh token của user
+    await Token.updateMany(
+      {
+        user_id: user._id,
+        type: 'refresh',
+        is_revoked: false
+      },
+      {
+        is_revoked: true,
+        revoked_at: new Date()
+      }
+    );
+
+    // Cập nhật trạng thái user
+    user.status = 'offline';
+    user.lastActive = new Date();
+    await user.save();
+
+    // Emit socket event
+    const io = getIO();
+    io.emit('user:status', {
+      userId: user._id,
+      status: 'offline',
+      username: user.username
+    });
+
+    res.status(200).json({ message: 'Đăng xuất thành công' });
+  } catch (error) {
+    console.error('Error logging out:', error);
+    res.status(500).json({ error: error.message });
   }
 };

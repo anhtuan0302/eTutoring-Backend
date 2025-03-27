@@ -30,9 +30,6 @@ const tokenSchema = new mongoose.Schema({
         default: false,
         index: true
     },
-    revoked_at: {
-        type: Date
-    },
     created_by_ip: {
         type: String
     }

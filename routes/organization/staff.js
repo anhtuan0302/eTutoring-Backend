@@ -1,19 +1,30 @@
 const express = require('express');
 const router = express.Router();
-
+const staffController = require('../../controllers/organization/staff');
 const auth = require('../../middleware/auth');
 const roleCheck = require('../../middleware/roleCheck');
 
-const staffController = require('../../controllers/organization/staff');
+// Lấy danh sách nhân viên (yêu cầu đăng nhập)
+router.get('/', auth, staffController.getAllStaffs);
 
-router.get('/', auth, staffController.getAllStaff);
-
+// Lấy thông tin nhân viên theo ID (yêu cầu đăng nhập)
 router.get('/:id', auth, staffController.getStaffById);
 
-router.post('/', auth, roleCheck(['admin', 'staff']), staffController.createStaff);
+// Lấy thông tin nhân viên theo userID (yêu cầu đăng nhập)
+router.get('/user/:userId', auth, staffController.getStaffByUserId);
 
-router.patch('/:id', auth, roleCheck(['admin', 'staff']), staffController.updateStaff);
+// Cập nhật thông tin nhân viên (chỉ admin)
+router.put('/:id', 
+  auth, 
+  roleCheck(['admin']), 
+  staffController.updateStaff
+);
 
-router.delete('/:id', auth, roleCheck(['admin', 'staff']), staffController.deleteStaff);
+// Thống kê nhân viên theo khoa (chỉ admin)
+router.get('/stats/department', 
+  auth, 
+  roleCheck(['admin']), 
+  staffController.getStaffByDepartment
+);
 
 module.exports = router;

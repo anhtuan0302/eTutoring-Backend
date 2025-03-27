@@ -31,7 +31,7 @@ const pendingUserSchema = new mongoose.Schema({
     sparse: true,
     maxLength: 50
   },
-  department: {
+  department_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'department',
     required: true

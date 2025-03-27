@@ -16,10 +16,6 @@ const studentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'department',
     required: true
-  },
-  is_deleted: {
-    type: Boolean,
-    default: false
   }
 }, {
   timestamps: true

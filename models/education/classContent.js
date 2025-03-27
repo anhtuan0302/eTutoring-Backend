@@ -36,7 +36,7 @@ const attachmentSchema = new mongoose.Schema({
 });
 
 const classContentSchema = new mongoose.Schema({
-  class_id: {
+  classInfo_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'classInfo',
     required: true
@@ -57,15 +57,11 @@ const classContentSchema = new mongoose.Schema({
   duedate: {
     type: Date
   },
-  attachments: [attachmentSchema],
-  is_deleted: {
-    type: Boolean,
-    default: false
-  }
+  attachments: [attachmentSchema]
 }, {
   timestamps: true
 });
 
-classContentSchema.index({ class_id: 1, content_type: 1 });
+classContentSchema.index({ classInfo_id: 1, content_type: 1 });
 
 module.exports = mongoose.model('classContent', classContentSchema);

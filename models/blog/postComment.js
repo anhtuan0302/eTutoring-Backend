@@ -15,10 +15,6 @@ const postCommentSchema = new mongoose.Schema({
     type: String,
     required: true,
     maxlength: 1000
-  },
-  is_deleted: {
-    type: Boolean,
-    default: false
   }
 }, {
   timestamps: true

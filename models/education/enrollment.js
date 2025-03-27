@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const enrollmentSchema = new mongoose.Schema({
-  class_id: {
+  classInfo_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'classInfo',
     required: true
@@ -29,6 +29,6 @@ const enrollmentSchema = new mongoose.Schema({
 });
 
 // Đảm bảo mỗi sinh viên chỉ đăng ký một lớp một lần
-enrollmentSchema.index({ class_id: 1, student_id: 1 }, { unique: true });
+enrollmentSchema.index({ classInfo_id: 1, student_id: 1 }, { unique: true });
 
 module.exports = mongoose.model('enrollment', enrollmentSchema);

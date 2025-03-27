@@ -19,8 +19,11 @@ connectMongoose();
 initAdmin();
 
 // Nạp routes
-const authRoutes = require('./routes/auth/auth');
+
 const userRoutes = require('./routes/auth/user');
+const tokenRoutes = require('./routes/auth/token');
+const pendingUserRoutes = require('./routes/auth/pendingUser');
+const loginHistoryRoutes = require('./routes/auth/loginHistory');
 
 const departmentRoutes = require('./routes/organization/department');   
 const staffRoutes = require('./routes/organization/staff');
@@ -44,8 +47,10 @@ const courseRoutes = require('./routes/education/course');
 const enrollmentRoutes = require('./routes/education/enrollment');
 const submissionRoutes = require('./routes/education/submission');
 
-app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/token', tokenRoutes);
+app.use('/api/pendingUser', pendingUserRoutes);
+app.use('/api/loginHistory', loginHistoryRoutes);
 
 app.use('/api/department', departmentRoutes);
 app.use('/api/staff', staffRoutes);
