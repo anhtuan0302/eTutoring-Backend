@@ -4,7 +4,9 @@ const Department = require('../../models/organization/department');
 // Lấy danh sách giảng viên
 exports.getAllTutors = async (req, res) => {
   try {
-    const tutors = await Tutor.find();
+    const tutors = await Tutor.find()
+    .populate("department_id", "name")
+    .populate("user_id", "-password");
     res.status(200).json(tutors);
   } catch (error) {
     res.status(500).json({ error: error.message });

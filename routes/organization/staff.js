@@ -14,7 +14,7 @@ router.get('/:id', auth, staffController.getStaffById);
 router.get('/user/:userId', auth, staffController.getStaffByUserId);
 
 // Cập nhật thông tin nhân viên (chỉ admin)
-router.put('/:id', 
+router.patch('/:id', 
   auth, 
   roleCheck(['admin']), 
   staffController.updateStaff
