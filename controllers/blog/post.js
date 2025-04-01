@@ -40,7 +40,7 @@ exports.upload = multer({
 
 exports.createPost = async (req, res) => {
   try {
-    const { title, content, post_category_id } = req.body;
+    const { title, content } = req.body;
     const user_id = req.user._id;
 
     // Xử lý attachments nếu có
@@ -61,7 +61,6 @@ exports.createPost = async (req, res) => {
       user_id,
       title,
       content,
-      post_category_id,
       status,
       attachments,
     });
@@ -69,7 +68,6 @@ exports.createPost = async (req, res) => {
     await post.save();
     await post.populate([
       { path: "user_id", select: "username first_name last_name" },
-      { path: "post_category_id", select: "name" },
     ]);
 
     // Thông báo realtime nếu cần duyệt
@@ -96,15 +94,12 @@ exports.getAllPosts = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const status = req.query.status || "approved";
-    const category = req.query.category;
 
     const query = { is_deleted: false };
     if (status !== "all") query.status = status;
-    if (category) query.post_category_id = category;
 
     const posts = await Post.find(query)
       .populate("user_id", "username first_name last_name")
-      .populate("post_category_id", "name")
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit);
@@ -128,8 +123,7 @@ exports.getPostById = async (req, res) => {
       _id: req.params.id,
       is_deleted: false,
     })
-      .populate("user_id", "username first_name last_name")
-      .populate("post_category_id", "name");
+      .populate("user_id", "username first_name last_name");
 
     if (!post) {
       return res.status(404).json({ error: "Không tìm thấy bài viết" });
@@ -156,7 +150,7 @@ exports.getPostById = async (req, res) => {
 
 exports.updatePost = async (req, res) => {
   try {
-    const { title, content, post_category_id } = req.body;
+    const { title, content } = req.body;
     const post = await Post.findById(req.params.id);
 
     if (!post) {
@@ -176,7 +170,6 @@ exports.updatePost = async (req, res) => {
 
     post.title = title;
     post.content = content;
-    post.post_category_id = post_category_id;
 
     // Nếu là student và bài đã approved, cập nhật sẽ cần duyệt lại
     if (req.user.role === "student" && post.status === "approved") {
@@ -186,7 +179,6 @@ exports.updatePost = async (req, res) => {
     await post.save();
     await post.populate([
       { path: "user_id", select: "username first_name last_name" },
-      { path: "post_category_id", select: "name" },
     ]);
 
     // Emit socket event cho bài viết được cập nhật
