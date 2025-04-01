@@ -229,7 +229,7 @@ exports.verifyInvitation = async (req, res) => {
     const pendingUser = await PendingUser.findOne({
       invitation_token: token,
       invitation_expires_at: { $gt: new Date() }
-    }).populate(pendingUser => pendingUser.department_id ? 'department_id' : null);
+    }).populate('department_id');
 
     if (!pendingUser) {
       return res.status(400).json({ error: 'Token không hợp lệ hoặc đã hết hạn' });
