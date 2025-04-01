@@ -1,5 +1,6 @@
 const Message = require("../../models/communication/message");
 const ChatConversation = require("../../models/communication/chatConversation");
+const { handleNewMessage } = require("../../config/socket");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
@@ -77,10 +78,14 @@ exports.sendMessage = async (req, res) => {
       last_message_at: new Date(),
     });
 
-    await message.populate(
-      "sender_id",
-      "first_name last_name username avatar_path"
-    );
+    // Populate đầy đủ thông tin trước khi gửi response và emit socket
+    const populatedMessage = await Message.findById(message._id)
+      .populate("sender_id", "first_name last_name username avatar_path")
+      .populate("conversation_id", "user1_id user2_id");
+
+    // Emit socket event cho tin nhắn mới
+    handleNewMessage(populatedMessage);
+
     res.status(201).json(message);
   } catch (error) {
     if (req.file) fs.unlinkSync(req.file.path);

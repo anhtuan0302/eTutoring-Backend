@@ -42,7 +42,7 @@ exports.upload = multer({
 // Đăng nhập
 exports.loginUser = async (req, res) => {
   try {
-    const { usernameOrEmail, password } = req.body;
+    const { usernameOrEmail, password, remember } = req.body;
 
     if (!usernameOrEmail || !password) {
       return res
@@ -71,7 +71,7 @@ exports.loginUser = async (req, res) => {
     }
 
     // Tạo tokens
-    const tokens = await tokenController.generateAuthTokens(user._id, req.ip);
+    const tokens = await tokenController.generateAuthTokens(user._id, req.ip, remember || false);
 
     // Cập nhật trạng thái người dùng và emit event
     user.status = "online";
@@ -428,49 +428,6 @@ exports.getUserById = async (req, res) => {
     });
   } catch (error) {
     console.error("Error getting user by id:", error);
-    res.status(500).json({ error: error.message });
-  }
-};
-
-// Vô hiệu hóa tài khoản người dùng (admin only)
-exports.disableUser = async (req, res) => {
-  try {
-    // Kiểm tra quyền admin
-    if (req.user.role !== "admin") {
-      return res
-        .status(403)
-        .json({ error: "Không có quyền thực hiện thao tác này" });
-    }
-
-    const { id } = req.params;
-
-    // Không cho phép vô hiệu hóa chính mình
-    if (id === req.user._id.toString()) {
-      return res
-        .status(400)
-        .json({ error: "Không thể vô hiệu hóa tài khoản của chính mình" });
-    }
-
-    const user = await User.findById(id);
-
-    if (!user) {
-      return res.status(404).json({ error: "Không tìm thấy người dùng" });
-    }
-
-    // Không cho phép vô hiệu hóa admin khác
-    if (user.role === "admin" && req.user.role === "admin") {
-      return res
-        .status(403)
-        .json({ error: "Không thể vô hiệu hóa tài khoản admin khác" });
-    }
-
-    // TO-DO: Implement disable user logic here
-    // Hiện tại không có trường is_disabled trong schema
-    // Bạn có thể thêm vào schema hoặc xử lý theo cách khác
-
-    res.status(200).json({ message: "Vô hiệu hóa tài khoản thành công" });
-  } catch (error) {
-    console.error("Error disabling user:", error);
     res.status(500).json({ error: error.message });
   }
 };

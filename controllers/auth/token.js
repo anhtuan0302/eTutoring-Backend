@@ -31,20 +31,30 @@ const saveToken = async (userId, tokenValue, type, expiresIn, ip = '') => {
 };
 
 // Tạo token đăng nhập (access + refresh)
-exports.generateAuthTokens = async (userId, ip = '') => {
+exports.generateAuthTokens = async (userId, ip = '', remember = false) => {
   try {
     const user = await User.findById(userId);
     if (!user) {
       throw new Error('Không tìm thấy người dùng');
     }
     
-    // Tạo access token (hết hạn sau 15 phút)
-    const accessTokenValue = generateJwtToken(user, 'access', '24h');
+    // Điều chỉnh thời gian hết hạn dựa vào remember
+    const accessExpires = '24h';
+    const refreshExpires = remember ? '30d' : '7d';
+    
+    // Tạo access token
+    const accessTokenValue = generateJwtToken(user, 'access', accessExpires);
     const accessToken = await saveToken(user._id, accessTokenValue, 'access', 24 * 60 * 60, ip);
 
-    // Tạo refresh token (hết hạn sau 7 ngày)
-    const refreshTokenValue = generateJwtToken(user, 'refresh', '7d');
-    const refreshToken = await saveToken(user._id, refreshTokenValue, 'refresh', 7 * 24 * 60 * 60, ip);
+    // Tạo refresh token với thời hạn tùy thuộc vào remember
+    const refreshTokenValue = generateJwtToken(user, 'refresh', refreshExpires);
+    const refreshToken = await saveToken(
+      user._id, 
+      refreshTokenValue, 
+      'refresh', 
+      remember ? 30 * 24 * 60 * 60 : 7 * 24 * 60 * 60, 
+      ip
+    );
     
     return {
       access: {
@@ -71,7 +81,7 @@ exports.refreshToken = async (req, res) => {
       return res.status(400).json({ error: 'Refresh token is required' });
     }
     
-    // Kiểm tra refresh token trong database
+    // Kiểm tra refresh token trong database trước khi verify
     const tokenDoc = await Token.findOne({
       value: refresh_token,
       type: 'refresh',
@@ -80,35 +90,36 @@ exports.refreshToken = async (req, res) => {
     });
     
     if (!tokenDoc) {
-      return res.status(401).json({ error: 'Invalid refresh token' });
+      return res.status(401).json({ error: 'Invalid or expired refresh token' });
     }
     
     // Verify refresh token
+    let decoded;
     try {
-      const decoded = jwt.verify(refresh_token, process.env.JWT_SECRET);
-      
-      // Tạo access token mới
-      const user = await User.findById(decoded._id);
-      if (!user) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-      
-      // Tạo access token (hết hạn sau 15 phút)
-      const accessTokenValue = generateJwtToken(user, 'access', '24h');
-      const accessToken = await saveToken(user._id, accessTokenValue, 'access', 24 * 60 * 60, req.ip);
-      
-      return res.status(200).json({
-        access_token: accessTokenValue,
-        expires: accessToken.expires_at
-      });
+      decoded = jwt.verify(refresh_token, process.env.JWT_SECRET);
     } catch (err) {
-      // Refresh token không hợp lệ - thu hồi nó
+      // Thu hồi token nếu verify thất bại
       tokenDoc.is_revoked = true;
       tokenDoc.revoked_at = new Date();
       await tokenDoc.save();
       
       return res.status(401).json({ error: 'Invalid refresh token' });
     }
+    
+    // Tạo access token mới
+    const user = await User.findById(decoded._id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Tạo access token mới
+    const accessTokenValue = generateJwtToken(user, 'access', '24h');
+    const accessToken = await saveToken(user._id, accessTokenValue, 'access', 24 * 60 * 60, req.ip);
+    
+    return res.status(200).json({
+      access_token: accessTokenValue,
+      expires: accessToken.expires_at
+    });
   } catch (error) {
     console.error('Error refreshing token:', error);
     res.status(500).json({ error: error.message });

@@ -32,11 +32,4 @@ router.get('/',
 // Lấy thông tin người dùng theo ID (yêu cầu đăng nhập)
 router.get('/:id', auth, userController.getUserById);
 
-// Vô hiệu hóa tài khoản người dùng (chỉ admin)
-router.post('/:id/disable', 
-  auth, 
-  roleCheck(['admin']), 
-  userController.disableUser
-);
-
 module.exports = router;

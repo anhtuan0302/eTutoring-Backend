@@ -15,7 +15,11 @@ router.post('/',
 router.get('/verify/:token', pendingUserController.verifyInvitation);
 
 // Hoàn tất đăng ký (public)
-router.post('/complete/:token', pendingUserController.completeRegistration);
+router.post(
+  '/complete/:token', 
+  pendingUserController.upload.single('avatar'),
+  pendingUserController.completeRegistration
+);
 
 // Lấy danh sách lời mời đang chờ (chỉ admin và staff)
 router.get('/', 

@@ -14,7 +14,7 @@ router.get('/', auth, courseController.getAllCourses);
 router.get('/:id', auth, courseController.getCourseById);
 
 // Cập nhật khóa học
-router.put('/:id', auth, roleCheck(['admin', 'staff']), courseController.updateCourse);
+router.patch('/:id', auth, roleCheck(['admin', 'staff']), courseController.updateCourse);
 
 // Xóa khóa học
 router.delete('/:id', auth, roleCheck(['admin', 'staff']), courseController.deleteCourse);

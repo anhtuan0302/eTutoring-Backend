@@ -14,7 +14,7 @@ router.get('/', auth, classInfoController.getAllClasses);
 router.get('/:id', auth, classInfoController.getClassById);
 
 // Cập nhật lớp học
-router.put('/:id', auth, roleCheck(['admin', 'staff']), classInfoController.updateClass);
+router.patch('/:id', auth, roleCheck(['admin', 'staff']), classInfoController.updateClass);
 
 // Xóa lớp học
 router.delete('/:id', auth, roleCheck(['admin', 'staff']), classInfoController.deleteClass);

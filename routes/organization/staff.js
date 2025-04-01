@@ -27,4 +27,6 @@ router.get('/stats/department',
   staffController.getStaffByDepartment
 );
 
+router.delete('/:id', auth, roleCheck(['admin']), staffController.deleteStaff);
+
 module.exports = router;

@@ -189,20 +189,21 @@ const setupSocketServer = (server) => {
     // Handle disconnect
     socket.on("disconnect", async () => {
       console.log(`User disconnected: ${socket.user.username}`);
-
+    
       const userSocketSet = userSockets.get(userId);
       if (userSocketSet) {
         userSocketSet.delete(socket.id);
         if (userSocketSet.size === 0) {
           userSockets.delete(userId);
-
+    
           socket.user.status = "offline";
           socket.user.lastActive = new Date();
           await socket.user.save();
-
+    
           io.emit("user:status", {
             userId: socket.user._id,
             status: "offline",
+            lastActive: socket.user.lastActive,
             username: socket.user.username,
           });
         }
@@ -230,6 +231,16 @@ const sendToUser = (userId, event, data) => {
   return false;
 };
 
+// Thêm hàm này vào phần xử lý tin nhắn mới
+const handleNewMessage = async (message) => {
+  // Đảm bảo message đã được populate đầy đủ
+  const populatedMessage = await Message.findById(message._id)
+    .populate("sender_id", "first_name last_name username avatar_path")
+    .populate("conversation_id");
+
+  io.to(`conversation:${message.conversation_id}`).emit('message:new', populatedMessage);
+};
+
 // Hàm gửi tin nhắn tới một conversation
 const sendToConversation = (conversationId, event, data) => {
   if (io) {
@@ -244,6 +255,7 @@ module.exports = {
   isUserOnline,
   sendToUser,
   sendToConversation,
+  handleNewMessage,
   getIO: () => {
     if (!io) {
       throw new Error('Socket.io not initialized');

@@ -1,6 +1,6 @@
 const ChatConversation = require('../../models/communication/chatConversation');
 const User = require('../../models/auth/user');
-const socketConfig = require('../../config/socket');
+const { sendToUser } = require('../../config/socket');
 
 // Tạo cuộc hội thoại mới
 exports.createConversation = async (req, res) => {
@@ -24,6 +24,9 @@ exports.createConversation = async (req, res) => {
     }).populate('user1_id user2_id', 'first_name last_name username avatar_path status');
 
     if (conversation) {
+      // Thông báo cho cả hai người dùng về cuộc trò chuyện
+      sendToUser(user1_id, 'conversation:update', conversation);
+      sendToUser(user2_id, 'conversation:update', conversation);
       return res.status(200).json(conversation);
     }
 
@@ -37,6 +40,10 @@ exports.createConversation = async (req, res) => {
 
     await conversation.save();
     await conversation.populate('user1_id user2_id', 'first_name last_name username avatar_path status');
+
+    // Thông báo cho cả hai người dùng về cuộc trò chuyện mới
+    sendToUser(user1_id, 'conversation:new', conversation);
+    sendToUser(user2_id, 'conversation:new', conversation);
 
     res.status(201).json(conversation);
   } catch (error) {

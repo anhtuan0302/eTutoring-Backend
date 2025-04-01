@@ -27,14 +27,12 @@ const pendingUserSchema = new mongoose.Schema({
   },
   phone_number: {
     type: String,
-    unique: true,
-    sparse: true,
-    maxLength: 50
+    maxLength: 50,
+    default: undefined
   },
   department_id: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'department',
-    required: true
+    ref: 'department'
   },
   invitation_token: {
     type: String
@@ -48,5 +46,7 @@ const pendingUserSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+pendingUserSchema.index({ phone_number: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('pendingUser', pendingUserSchema);

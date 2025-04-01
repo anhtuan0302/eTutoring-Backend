@@ -27,4 +27,6 @@ router.get('/stats/department',
   tutorController.getTutorsByDepartment
 );
 
+router.delete('/:id', auth, roleCheck(['admin', 'staff']), tutorController.deleteTutor);
+
 module.exports = router;

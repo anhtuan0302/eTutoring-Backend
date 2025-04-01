@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require('cors');
 const http = require('http');
+const path = require('path');
 
 require("dotenv").config();
 const connectMongoose = require('./config/mongoose');
@@ -19,6 +20,7 @@ connectMongoose();
 initAdmin();
 
 // Nạp routes
+app.use('/', express.static(path.join(__dirname)));
 
 const userRoutes = require('./routes/auth/user');
 const tokenRoutes = require('./routes/auth/token');

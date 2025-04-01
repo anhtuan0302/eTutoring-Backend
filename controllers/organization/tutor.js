@@ -1,5 +1,8 @@
 const Tutor = require('../../models/organization/tutor');
 const Department = require('../../models/organization/department');
+const User = require('../../models/auth/user');
+const fs = require('fs');
+const path = require('path');
 
 // Lấy danh sách giảng viên
 exports.getAllTutors = async (req, res) => {
@@ -128,6 +131,46 @@ exports.getTutorsByDepartment = async (req, res) => {
     res.status(200).json(stats);
   } catch (error) {
     console.error('Error getting tutors by department:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Xóa giảng viên và user tương ứng
+exports.deleteTutor = async (req, res) => {
+  try {
+    const { id } = req.params;
+    // Tìm thông tin giảng viên
+    const tutor = await Tutor.findById(id);
+    if (!tutor) {
+      return res.status(404).json({ error: 'Không tìm thấy giảng viên' });
+    }
+
+    // Lưu user_id để xóa user sau
+    const userId = tutor.user_id;
+
+    // Tìm user để lấy đường dẫn avatar
+    const user = await User.findById(userId);
+    if (user && user.avatar_path) {
+      // Xóa file avatar
+      const avatarPath = path.join(__dirname, '../../', user.avatar_path);
+      if (fs.existsSync(avatarPath)) {
+        fs.unlinkSync(avatarPath);
+      }
+    }
+
+    // Xóa tutor trước
+    await Tutor.findByIdAndDelete(id);
+
+    // Xóa user tương ứng
+    await User.findByIdAndDelete(userId);
+
+    res.status(200).json({ 
+      message: 'Đã xóa giảng viên và tài khoản thành công',
+      deletedTutor: tutor
+    });
+
+  } catch (error) {
+    console.error('Error deleting tutor:', error);
     res.status(500).json({ error: error.message });
   }
 };
