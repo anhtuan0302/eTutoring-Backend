@@ -52,6 +52,11 @@ const postSchema = new mongoose.Schema({
     required: true,
     minlength: 10
   },
+  post_category_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'postCategory',
+    required: true
+  },
   attachments: [attachmentSchema],
   status: {
     type: String,
