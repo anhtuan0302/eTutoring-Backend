@@ -308,7 +308,9 @@ exports.completeRegistration = async (req, res) => {
       username: userCode,
       email: pendingUser.email,
       password: hashedPassword,
-      phone_number: pendingUser.phone_number || null,
+      phone_number: pendingUser.phone_number && pendingUser.phone_number.trim() !== '' 
+      ? pendingUser.phone_number.trim() 
+      : undefined,
       avatar_path: avatarFile ? avatarFile.path : undefined
     });
 

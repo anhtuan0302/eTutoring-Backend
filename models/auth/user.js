@@ -38,9 +38,8 @@ const userSchema = new mongoose.Schema({
   },
   phone_number: {
     type: String,
-    unique: true,
-    sparse: true,
-    maxLength: 50
+    maxLength: 50,
+    default: undefined
   },
   avatar_path: {
     type: String
@@ -57,5 +56,7 @@ const userSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+userSchema.index({ phone_number: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('user', userSchema);
