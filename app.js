@@ -36,7 +36,6 @@ const chatConversationRoutes = require('./routes/communication/chatConversation'
 const messageRoutes = require('./routes/communication/message');
 
 const postRoutes = require('./routes/blog/post');
-const postCategoryRoutes = require('./routes/blog/postCategory');
 const postCommentRoutes = require('./routes/blog/postComment');
 const postReactionRoutes = require('./routes/blog/postReaction');
 
@@ -63,7 +62,6 @@ app.use('/api/chat/conversation', chatConversationRoutes);
 app.use('/api/chat/message', messageRoutes);
 
 app.use('/api/blog/post', postRoutes);
-app.use('/api/blog/postCategory', postCategoryRoutes);
 app.use('/api/blog/postComment', postCommentRoutes);
 app.use('/api/blog/postReaction', postReactionRoutes);
 
