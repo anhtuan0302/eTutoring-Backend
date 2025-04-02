@@ -8,7 +8,7 @@ const enrollmentController = require('../../controllers/education/enrollment');
 router.post('/', auth, roleCheck(['admin', 'staff']), enrollmentController.enrollStudent);
 
 // Lấy danh sách sinh viên đã đăng ký lớp
-router.get('/class/:class_id', auth, roleCheck(['admin', 'tutor', 'staff']), enrollmentController.getStudentsByClass);
+router.get('/class/:classInfo_id', auth, roleCheck(['admin', 'tutor', 'staff']), enrollmentController.getStudentsByClass);
 
 // Lấy danh sách lớp học của sinh viên
 router.get('/student/:student_id', auth, roleCheck(['admin', 'tutor', 'staff']), enrollmentController.getClassesByStudent);
