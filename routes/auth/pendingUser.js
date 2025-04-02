@@ -28,6 +28,13 @@ router.get('/',
   pendingUserController.getPendingUsers
 );
 
+// Lấy thông tin lời mời theo ID (chỉ admin và staff)
+router.get('/:id', 
+  auth, 
+  roleCheck(['admin', 'staff']), 
+  pendingUserController.getPendingUserById
+);
+
 // Hủy lời mời (chỉ admin và staff)
 router.delete('/:id', 
   auth, 

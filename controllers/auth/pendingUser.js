@@ -385,6 +385,20 @@ exports.getPendingUsers = async (req, res) => {
   }
 };
 
+exports.getPendingUserById = async (req, res) => {
+try {
+  const { id } = req.params;
+  const pendingUser = await PendingUser.findById(id).populate('department_id', 'name');
+  if (!pendingUser) {
+    return res.status(404).json({ error: 'Không tìm thấy lời mời' });
+  }
+  res.status(200).json(pendingUser);
+} catch (error) {
+  console.error('Error getting pending user by id:', error);
+  res.status(500).json({ error: error.message });
+}
+};
+
 // Hủy lời mời
 exports.cancelInvitation = async (req, res) => {
   try {
