@@ -54,7 +54,6 @@ exports.getAllCourses = async (req, res) => {
     
     res.status(200).json(courses);
   } catch (error) {
-    console.error('Error getting courses:', error);
     res.status(500).json({ error: error.message });
   }
 };

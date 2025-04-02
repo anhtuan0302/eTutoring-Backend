@@ -19,19 +19,12 @@ const classSchema = new mongoose.Schema({
     trim: true,
     maxLength: 100
   },
-  semester: {
-    type: String,
-    maxLength: 50
-  },
-  year: {
-    type: Number
-  },
   max_students: {
     type: Number
   },
   status: {
     type: String,
-    enum: ['open', 'closed', 'in_progress'],
+    enum: ['open', 'closed', 'in progress'],
     default: 'open'
   },
   start_date: {

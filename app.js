@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require('cors');
 const http = require('http');
 const path = require('path');
+const { initCronJobs } = require('./config/cron');
 
 require("dotenv").config();
 const connectMongoose = require('./config/mongoose');
@@ -18,6 +19,7 @@ app.use(express.json());
 
 connectMongoose();
 initAdmin();
+initCronJobs();
 
 // Nạp routes
 app.use('/', express.static(path.join(__dirname)));
