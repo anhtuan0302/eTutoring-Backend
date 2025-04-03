@@ -13,12 +13,6 @@ const classSchema = new mongoose.Schema({
     trim: true,
     maxLength: 100
   },
-  name: {
-    type: String,
-    required: true,
-    trim: true,
-    maxLength: 100
-  },
   max_students: {
     type: Number
   },

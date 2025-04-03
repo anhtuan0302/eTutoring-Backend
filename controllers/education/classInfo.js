@@ -7,8 +7,7 @@ const { calculateStatusClassInfo } = require("../../config/cron");
 // Tạo lớp học mới
 exports.createClass = async (req, res) => {
   try {
-    const { course_id, code, name, max_students, start_date, end_date } =
-      req.body;
+    const { course_id, code, max_students, start_date, end_date } = req.body;
 
     // Kiểm tra code đã tồn tại chưa
     const existingClass = await ClassInfo.findOne({ code });
@@ -26,7 +25,6 @@ exports.createClass = async (req, res) => {
     const classInfo = new ClassInfo({
       course_id,
       code: code.trim(),
-      name: name.trim(),
       max_students,
       status,
       start_date,
@@ -34,7 +32,7 @@ exports.createClass = async (req, res) => {
     });
 
     await classInfo.save();
-    await classInfo.populate("course_id", "name code");
+    await classInfo.populate("course_id", "code");
 
     res.status(201).json(classInfo);
   } catch (error) {
@@ -45,50 +43,106 @@ exports.createClass = async (req, res) => {
 // Lấy danh sách lớp học
 exports.getAllClasses = async (req, res) => {
   try {
-    const classes = await ClassInfo.find().populate("course_id", "name code");
-    res.json(classes);
+    const classes = await ClassInfo.find().populate({
+      path: "course_id",
+      select: "code name department_id",
+      populate: {
+        path: "department_id",
+        select: "name",
+      },
+    });
+    // Lấy thông tin số lượng sinh viên và tutors cho mỗi lớp
+    const classesWithDetails = await Promise.all(
+      classes.map(async (classInfo) => {
+        // Đếm số lượng sinh viên
+        const enrollmentCount = await Enrollment.countDocuments({
+          classInfo_id: classInfo._id,
+        });
+        // Đếm số lượng tutors
+        const tutorCount = await ClassTutor.countDocuments({
+          classInfo_id: classInfo._id,
+        });
+        // Đếm số lượng giảng viên chính
+        const primaryTutorCount = await ClassTutor.countDocuments({
+          classInfo_id: classInfo._id,
+          is_primary: true,
+        });
+        // Lấy danh sách tutors
+        const tutors = await ClassTutor.find({
+          classInfo_id: classInfo._id,
+        }).populate({
+          path: "tutor_id",
+          select: "tutor_code",
+          populate: {
+            path: "user_id",
+            select: "first_name last_name email phone_number",
+          },
+        });
+
+        return {
+          ...classInfo.toObject(),
+          current_students: enrollmentCount,
+          tutors: tutors,
+          current_tutors: tutorCount,
+          current_primary_tutors: primaryTutorCount,
+        };
+      })
+    );
+
+    res.status(200).json(classesWithDetails);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
+
 // Lấy chi tiết lớp học
 exports.getClassById = async (req, res) => {
   try {
-    const classInfo = await ClassInfo.findById(req.params.id).populate(
-      "course_id",
-      "name code"
-    );
+    const classInfo = await ClassInfo.findById(req.params.id).populate({
+      path: "course_id",
+      select: "code name department_id",
+      populate: {
+        path: "department_id",
+        select: "name",
+      },
+    });
 
     if (!classInfo) {
       return res.status(404).json({ error: "Class not found" });
     }
 
-    // Lấy số lượng sinh viên đã đăng ký
-    const enrollmentCount = await Enrollment.countDocuments({
-      class_id: req.params.id,
-    });
-
-    // Lấy thông tin giảng viên của lớp
-    const tutors = await ClassTutor.find({ class_id: req.params.id })
-      .populate("tutor_id", "tutor_code")
+    // Lấy danh sách sinh viên đã đăng ký
+    const enrollments = await Enrollment.find({ classInfo_id: req.params.id })
       .populate({
-        path: "tutor_id",
+        path: "student_id",
+        select: "student_code",
         populate: {
           path: "user_id",
-          select: "first_name last_name email",
+          select: "-password",
         },
       });
 
+    // Lấy thông tin giảng viên của lớp
+    const tutors = await ClassTutor.find({ classInfo_id: req.params.id })
+      .populate({
+        path: "tutor_id",
+        select: "tutor_code",
+        populate: {
+          path: "user_id",
+          select: "-password",
+        },
+      })
+      .select("is_primary");
+
     const result = {
       ...classInfo.toObject(),
-      enrollment_count: enrollmentCount,
+      enrollments,
       tutors,
     };
 
     res.status(200).json(result);
   } catch (error) {
-    console.error("Error getting class:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: error.message });
   }
 };
 

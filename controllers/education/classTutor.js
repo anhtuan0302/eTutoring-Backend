@@ -5,36 +5,56 @@ const Tutor = require('../../models/organization/tutor');
 // Thêm giảng viên vào lớp
 exports.assignTutor = async (req, res) => {
   try {
-    const { class_id, tutor_id, is_primary } = req.body;
+    const { classInfo_id, tutor_id, is_primary } = req.body;
     
-    // Kiểm tra lớp học tồn tại
-    const classInfo = await ClassInfo.findOne({ _id: class_id, is_deleted: false });
+    const classInfo = await ClassInfo.findById(classInfo_id)
+    .populate({
+      path: 'course_id',
+      populate: {
+        path: 'department_id'
+      }
+    });
+
     if (!classInfo) {
       return res.status(404).json({ error: 'Không tìm thấy lớp học' });
     }
     
     // Kiểm tra giảng viên tồn tại
-    const tutor = await Tutor.findOne({ _id: tutor_id, is_deleted: false });
+    const tutor = await Tutor.findById(tutor_id).populate('department_id');
     if (!tutor) {
       return res.status(404).json({ error: 'Không tìm thấy giảng viên' });
     }
     
+    // Kiểm tra department của giảng viên có khớp với department của khóa học không
+    if (tutor.department_id._id.toString() !== classInfo.course_id.department_id._id.toString()) {
+      return res.status(403).json({ 
+        error: 'Giảng viên không thể đăng ký dạy lớp học thuộc khoa/bộ môn khác' 
+      });
+    }
+
     // Kiểm tra xem đã có phân công chưa
-    const existingAssignment = await ClassTutor.findOne({ class_id, tutor_id });
+    const existingAssignment = await ClassTutor.findOne({ 
+      classInfo_id,
+      tutor_id 
+    });
     if (existingAssignment) {
       return res.status(400).json({ error: 'Giảng viên đã được phân công cho lớp này' });
     }
     
-    // Nếu là giảng viên chính, cập nhật các giảng viên chính khác thành phụ
+    // Nếu là giảng viên chính, kiểm tra lớp đã có giảng viên chính chưa
     if (is_primary) {
-      await ClassTutor.updateMany(
-        { class_id, is_primary: true },
-        { is_primary: false }
-      );
+      const existingPrimaryTutor = await ClassTutor.findOne({
+        classInfo_id,
+        is_primary: true
+      });
+
+      if (existingPrimaryTutor) {
+        return res.status(400).json({ error: 'Lớp học đã có giảng viên chính' });
+      }
     }
     
     const classTutor = new ClassTutor({
-      class_id,
+      classInfo_id,
       tutor_id,
       is_primary: is_primary || false
     });
@@ -42,16 +62,33 @@ exports.assignTutor = async (req, res) => {
     await classTutor.save();
     
     // Populate thông tin chi tiết
-    await classTutor.populate([
-      { path: 'class_id', select: 'code name' },
-      { path: 'tutor_id', select: 'tutor_code' },
-      { 
+    const populatedClassTutor = await ClassTutor.findById(classTutor._id)
+      .populate({
+        path: 'classInfo_id',
+        populate: {
+          path: 'course_id',
+          select: 'name code',
+          populate: {
+            path: 'department_id',
+            select: 'name'
+          }
+        },
+      })
+      .populate({
         path: 'tutor_id',
-        populate: { path: 'user_id', select: 'first_name last_name email' }
-      }
-    ]);
-    
-    res.status(201).json(classTutor);
+        populate: [
+            {
+            path: 'user_id',
+            select: '-password'
+          },
+          {
+            path: 'department_id',
+            select: 'name'
+          }
+        ]
+      });
+
+    res.status(201).json(populatedClassTutor);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -62,11 +99,20 @@ exports.getTutorsByClass = async (req, res) => {
   try {
     const { class_id } = req.params;
     
-    const tutors = await ClassTutor.find({ class_id })
-      .populate('tutor_id', 'tutor_code')
+    const tutors = await ClassTutor.find({ classInfo_id: class_id })
       .populate({
         path: 'tutor_id',
-        populate: { path: 'user_id', select: 'first_name last_name email avatar_path' }
+        populate: {
+          path: 'user_id',
+          select: '-password'
+        }
+      })
+      .populate({
+        path: 'tutor_id',
+        populate: {
+          path: 'department_id',
+          select: 'name'
+        }
       })
       .sort({ is_primary: -1 });
       
@@ -83,14 +129,25 @@ exports.getClassesByTutor = async (req, res) => {
     
     const classes = await ClassTutor.find({ tutor_id })
       .populate({
-        path: 'class_id',
-        match: { is_deleted: false },
+        path: 'tutor_id',
+        populate: [
+          {
+            path: 'user_id',
+            select: 'first_name last_name email phone_number avatar_path'
+          },
+          {
+            path: 'department_id',
+            select: 'name'
+          }
+        ]
+      })
+      .populate({
+        path: 'classInfo_id',  // Sửa từ class_id thành classInfo_id
         populate: { path: 'course_id', select: 'name code' }
       })
-      .sort({ 'class_id.year': -1, 'class_id.semester': 1 });
+      .sort({ 'classInfo_id.createdAt': -1 });  // Sửa từ class_id thành classInfo_id
       
-    // Lọc bỏ các null (trường hợp class đã bị xóa)
-    const filteredClasses = classes.filter(c => c.class_id !== null);
+    const filteredClasses = classes.filter(c => c.classInfo_id !== null);  // Sửa từ class_id thành classInfo_id
       
     res.status(200).json(filteredClasses);
   } catch (error) {
@@ -112,7 +169,11 @@ exports.updateTutorRole = async (req, res) => {
     // Nếu cập nhật thành giảng viên chính, cập nhật các giảng viên chính khác thành phụ
     if (is_primary) {
       await ClassTutor.updateMany(
-        { class_id: classTutor.class_id, is_primary: true, _id: { $ne: id } },
+        { 
+          classInfo_id: classTutor.classInfo_id,  // Sửa từ class_id thành classInfo_id
+          is_primary: true, 
+          _id: { $ne: id } 
+        },
         { is_primary: false }
       );
     }
@@ -122,7 +183,7 @@ exports.updateTutorRole = async (req, res) => {
     
     // Populate thông tin chi tiết
     await classTutor.populate([
-      { path: 'class_id', select: 'code name' },
+      { path: 'classInfo_id', select: 'code name' },  // Sửa từ class_id thành classInfo_id
       { path: 'tutor_id', select: 'tutor_code' },
       { 
         path: 'tutor_id',

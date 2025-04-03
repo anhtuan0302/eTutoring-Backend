@@ -14,7 +14,7 @@ router.get('/class/:class_id', auth, classTutorController.getTutorsByClass);
 router.get('/tutor/:tutor_id', auth, classTutorController.getClassesByTutor);
 
 // Cập nhật vai trò giảng viên
-router.put('/:id', auth, roleCheck(['admin', 'staff']), classTutorController.updateTutorRole);
+router.patch('/:id', auth, roleCheck(['admin', 'staff']), classTutorController.updateTutorRole);
 
 // Xóa giảng viên khỏi lớp
 router.delete('/:id', auth, roleCheck(['admin', 'staff']), classTutorController.removeTutor);
