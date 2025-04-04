@@ -45,10 +45,10 @@ exports.upload = multer({
 // Tạo nội dung mới
 exports.createContent = async (req, res) => {
   try {
-    const { class_id, title, description, content_type, duedate, order } = req.body;
+    const { classInfo_id, title, description, content_type, duedate } = req.body;
     
     // Kiểm tra lớp học tồn tại
-    const classInfo = await ClassInfo.findOne({ _id: class_id, is_deleted: false });
+    const classInfo = await ClassInfo.findById(classInfo_id);
     if (!classInfo) {
       return res.status(404).json({ error: 'Không tìm thấy lớp học' });
     }
@@ -62,31 +62,32 @@ exports.createContent = async (req, res) => {
     })) || [];
     
     const classContent = new ClassContent({
-      class_id,
+      classInfo_id,
       title,
       description,
       content_type,
       duedate: content_type === 'assignment' ? duedate : undefined,
-      order: order || 0,
-      is_visible: true,
       attachments
     });
     
     await classContent.save();
-    
-    // Thông báo về nội dung mới
-    if (req.io && content_type === 'assignment') {
-      req.io.to(`class:${class_id}`).emit('content:new_assignment', {
-        content_id: classContent._id,
-        class_id,
-        title,
-        duedate
-      });
-    }
-    
-    res.status(201).json(classContent);
+
+    const populatedClassContent = await ClassContent.findById(classContent._id)
+    .populate({
+      path: 'classInfo_id',
+      select: 'code',
+      populate: {
+        path: 'course_id',
+        select: 'name code',
+        populate: {
+          path: 'department_id',
+          select: 'name'
+        }
+      }
+    });
+
+    res.status(201).json(populatedClassContent);
   } catch (error) {
-    // Xóa files nếu có lỗi
     if (req.files) {
       req.files.forEach(file => fs.unlinkSync(file.path));
     }
@@ -95,16 +96,28 @@ exports.createContent = async (req, res) => {
 };
 
 // Lấy danh sách nội dung
-exports.getContentsByClass = async (req, res) => {
+exports.getContentsByClassId = async (req, res) => {
   try {
-    const { class_id } = req.params;
+    const { classInfo_id } = req.params;
     const { content_type } = req.query;
     
-    const filter = { class_id, is_deleted: false };
+    const filter = { classInfo_id };
     if (content_type) filter.content_type = content_type;
     
     const contents = await ClassContent.find(filter)
-      .sort({ order: 1, createdAt: 1 });
+      .populate({
+        path: 'classInfo_id',
+        select: 'code',
+        populate: {
+          path: 'course_id',
+          select: 'name code',
+          populate: {
+            path: 'department_id',
+            select: 'name'
+          }
+        }
+      })
+      .sort({ createdAt: -1 });
       
     res.status(200).json(contents);
   } catch (error) {
@@ -115,10 +128,19 @@ exports.getContentsByClass = async (req, res) => {
 // Lấy chi tiết nội dung
 exports.getContentById = async (req, res) => {
   try {
-    const content = await ClassContent.findOne({
-      _id: req.params.id,
-      is_deleted: false
-    }).populate('class_id', 'code name');
+    const content = await ClassContent.findById(req.params.id)
+      .populate({
+        path: 'classInfo_id',
+        select: 'code',
+        populate: {
+          path: 'course_id',
+          select: 'name code',
+          populate: {
+            path: 'department_id',
+            select: 'name'
+          }
+        }
+      });
     
     if (!content) {
       return res.status(404).json({ error: 'Không tìm thấy nội dung' });
@@ -133,13 +155,9 @@ exports.getContentById = async (req, res) => {
 // Cập nhật nội dung
 exports.updateContent = async (req, res) => {
   try {
-    const { title, description, duedate, is_visible, order } = req.body;
+    const { title, description, duedate } = req.body;
     
-    const content = await ClassContent.findOne({
-      _id: req.params.id,
-      is_deleted: false
-    });
-    
+    const content = await ClassContent.findById(req.params.id);
     if (!content) {
       return res.status(404).json({ error: 'Không tìm thấy nội dung' });
     }
@@ -156,29 +174,29 @@ exports.updateContent = async (req, res) => {
     }
     
     // Cập nhật thông tin
-    content.title = title || content.title;
-    content.description = description || content.description;
-    content.is_visible = is_visible !== undefined ? is_visible : content.is_visible;
-    content.order = order !== undefined ? order : content.order;
-    
-    // Chỉ cập nhật duedate cho assignment
+    if (title) content.title = title;
+    if (description) content.description = description;
     if (content.content_type === 'assignment' && duedate) {
       content.duedate = duedate;
     }
     
     await content.save();
     
-    // Thông báo về cập nhật
-    if (req.io && content.content_type === 'assignment') {
-      req.io.to(`class:${content.class_id}`).emit('content:updated', {
-        content_id: content._id,
-        class_id: content.class_id,
-        title: content.title,
-        duedate: content.duedate
+    const updatedContent = await ClassContent.findById(content._id)
+      .populate({
+        path: 'classInfo_id',
+        select: 'code',
+        populate: {
+          path: 'course_id',
+          select: 'name code',
+          populate: {
+            path: 'department_id',
+            select: 'name'
+          }
+        }
       });
-    }
     
-    res.status(200).json(content);
+    res.status(200).json(updatedContent);
   } catch (error) {
     // Xóa files nếu có lỗi
     if (req.files) {
@@ -193,11 +211,7 @@ exports.removeAttachment = async (req, res) => {
   try {
     const { id, attachmentId } = req.params;
     
-    const content = await ClassContent.findOne({
-      _id: id,
-      is_deleted: false
-    });
-    
+    const content = await ClassContent.findById(id);
     if (!content) {
       return res.status(404).json({ error: 'Không tìm thấy nội dung' });
     }
@@ -208,10 +222,10 @@ exports.removeAttachment = async (req, res) => {
       return res.status(404).json({ error: 'Không tìm thấy file đính kèm' });
     }
     
-    // Xóa file
+    // Xóa file vật lý
     fs.unlinkSync(attachment.file_path);
     
-    // Xóa từ mảng
+    // Xóa từ database
     content.attachments.pull(attachmentId);
     await content.save();
     
@@ -224,16 +238,21 @@ exports.removeAttachment = async (req, res) => {
 // Xóa nội dung
 exports.deleteContent = async (req, res) => {
   try {
-    const content = await ClassContent.findOneAndUpdate(
-      { _id: req.params.id, is_deleted: false },
-      { is_deleted: true },
-      { new: true }
-    );
-    
+    const content = await ClassContent.findById(req.params.id);
     if (!content) {
       return res.status(404).json({ error: 'Không tìm thấy nội dung' });
     }
-    
+
+    // Xóa các file đính kèm
+    content.attachments.forEach(attachment => {
+      try {
+        fs.unlinkSync(attachment.file_path);
+      } catch (err) {
+        console.error('Lỗi khi xóa file:', err);
+      }
+    });
+
+    await content.deleteOne();
     res.status(200).json({ message: 'Đã xóa nội dung thành công' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -245,11 +264,7 @@ exports.downloadAttachment = async (req, res) => {
   try {
     const { id, attachmentId } = req.params;
     
-    const content = await ClassContent.findOne({
-      _id: id,
-      is_deleted: false
-    });
-    
+    const content = await ClassContent.findById(id);
     if (!content) {
       return res.status(404).json({ error: 'Không tìm thấy nội dung' });
     }

@@ -6,9 +6,6 @@ const classScheduleSchema = new mongoose.Schema({
     ref: 'classInfo',
     required: true
   },
-  description: {
-    type: String
-  },
   start_time: {
     type: Date,
     required: true
@@ -29,7 +26,7 @@ const classScheduleSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['scheduled', 'canceled', 'completed'],
+    enum: ['scheduled', 'completed'],
     default: 'scheduled'
   }
 }, {

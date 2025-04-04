@@ -31,7 +31,7 @@ const attachmentSchema = new mongoose.Schema({
   file_size: {
     type: Number,
     required: true,
-    max: 1024 * 1024 * 10
+    max: 1024 * 1024 * 10 // 10MB
   }
 });
 
@@ -45,9 +45,6 @@ const submissionSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'student',
     required: true
-  },
-  content: {
-    type: String
   },
   attachments: [attachmentSchema],
   status: {
@@ -68,6 +65,9 @@ const submissionSchema = new mongoose.Schema({
       type: Number,
       min: 0,
       max: 100
+    },
+    file_path: {
+      type: String,
     },
     feedback: {
       type: String,

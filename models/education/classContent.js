@@ -62,6 +62,4 @@ const classContentSchema = new mongoose.Schema({
   timestamps: true
 });
 
-classContentSchema.index({ classInfo_id: 1, content_type: 1 });
-
 module.exports = mongoose.model('classContent', classContentSchema);

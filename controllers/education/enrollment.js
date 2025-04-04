@@ -3,6 +3,7 @@ const ClassInfo = require("../../models/education/classInfo");
 const Student = require("../../models/organization/student");
 
 // Đăng ký lớp học
+// Đăng ký lớp học
 exports.enrollStudent = async (req, res) => {
   try {
     const { classInfo_id, student_id } = req.body;
@@ -12,7 +13,7 @@ exports.enrollStudent = async (req, res) => {
       path: "course_id",
       populate: {
         path: "department_id",
-        select: 'name'
+        select: 'name _id'
       },
     });
 
@@ -21,19 +22,24 @@ exports.enrollStudent = async (req, res) => {
     }
 
     // Kiểm tra sinh viên tồn tại
-    const student = await Student.findById(student_id);
+    const student = await Student.findById(student_id).populate('department_id');
+
     if (!student) {
       return res.status(404).json({ error: "Student not found" });
     }
 
-    //Kiểm tra department của sinh viên có khớp với department của khoá học không
-    if (
-      student.department_id.toString() !==
-      classInfo.course_id.department_id.toString()
-    ) {
-      return res
-        .status(400)
-        .json({ error: "Student is not in the same department as the class" });
+    // Kiểm tra department
+    const studentDeptId = student.department_id?._id || student.department_id;
+    const classDeptId = classInfo.course_id?.department_id?._id || classInfo.course_id?.department_id;
+
+    if (!studentDeptId || !classDeptId || studentDeptId.toString() !== classDeptId.toString()) {
+      return res.status(400).json({
+        error: "Student is not in the same department as the class",
+        details: {
+          studentDepartment: studentDeptId?.toString(),
+          classDepartment: classDeptId?.toString()
+        }
+      });
     }
 
     // Kiểm tra sinh viên đã đăng ký lớp học này chưa
@@ -41,27 +47,23 @@ exports.enrollStudent = async (req, res) => {
       classInfo_id,
       student_id,
     });
+
     if (existingEnrollment) {
-      return res
-        .status(400)
-        .json({ error: "Student has already enrolled in this class" });
+      return res.status(400).json({ error: "Student has already enrolled in this class" });
     }
 
     // Kiểm tra lớp học đã đầy chưa
-    if (classInfo.max_students) {
-      const enrollmentCount = await Enrollment.countDocuments({ classInfo_id });
-      if (enrollmentCount >= classInfo.max_students) {
-        return res.status(400).json({ error: "Class is full" });
-      }
+    const enrollmentCount = await Enrollment.countDocuments({ classInfo_id });
+    if (enrollmentCount >= classInfo.max_students) {
+      return res.status(400).json({ error: "Class is full" });
     }
 
     // Kiểm tra lớp học có đang đóng không
     if (classInfo.status === "closed") {
-      return res
-        .status(400)
-        .json({ error: "Class is not open or in progress for enrollment" });
+      return res.status(400).json({ error: "Class is not open or in progress for enrollment" });
     }
 
+    // Tạo enrollment mới
     const enrollment = new Enrollment({
       classInfo_id,
       student_id,
@@ -69,7 +71,7 @@ exports.enrollStudent = async (req, res) => {
 
     await enrollment.save();
 
-
+    // Populate thông tin chi tiết
     const populatedEnrollment = await Enrollment.findById(enrollment._id)
       .populate({
         path: 'classInfo_id',
@@ -86,11 +88,7 @@ exports.enrollStudent = async (req, res) => {
         path: 'student_id',
         populate: {
           path: 'user_id',
-          select: '-password',
-          populate: {
-            path: 'department_id',
-            select: 'name'
-          }
+          select: '-password'
         }
       });
 

@@ -13,7 +13,7 @@ router.post('/',
 );
 
 // Lấy danh sách nội dung của lớp
-router.get('/class/:class_id', auth, classContentController.getContentsByClass);
+router.get('/class/:classInfo_id', auth, classContentController.getContentsByClassId);
 
 // Lấy thông tin nội dung theo ID
 router.get('/:id', auth, classContentController.getContentById);

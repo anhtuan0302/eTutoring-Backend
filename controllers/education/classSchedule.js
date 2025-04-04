@@ -1,44 +1,116 @@
 const ClassSchedule = require('../../models/education/classSchedule');
 const ClassInfo = require('../../models/education/classInfo');
-const { sendToUser } = require('../../config/socket');
 
 // Tạo lịch học mới
 exports.createSchedule = async (req, res) => {
   try {
     const {
-      class_id, description, start_time, end_time,
-      is_online, online_link, location, session_number
+      classInfo_id, start_time, end_time,
+      is_online, online_link, location,
     } = req.body;
     
     // Kiểm tra lớp học tồn tại
-    const classInfo = await ClassInfo.findOne({ _id: class_id, is_deleted: false });
+    const classInfo = await ClassInfo.findById(classInfo_id)
+      .populate({
+        path: 'course_id',
+        populate: {
+          path: 'department_id',
+          select: 'name'
+        }
+      });
+
     if (!classInfo) {
       return res.status(404).json({ error: 'Không tìm thấy lớp học' });
     }
+
+    const startDateTime = new Date(start_time);
+    const endDateTime = new Date(end_time);
+    const currentDateTime = new Date();
+    const classStartDate = new Date(classInfo.start_date);
+    const classEndDate = new Date(classInfo.end_date);
+
+    if (startDateTime <= currentDateTime) {
+      return res.status(400).json({ 
+        error: 'Không thể tạo lịch học trong quá khứ. Thời gian bắt đầu phải sau thời điểm hiện tại' 
+      });
+    }
     
     // Kiểm tra thời gian bắt đầu và kết thúc
-    if (new Date(start_time) >= new Date(end_time)) {
+    if (startDateTime >= endDateTime) {
       return res.status(400).json({ error: 'Thời gian kết thúc phải sau thời gian bắt đầu' });
+    }
+
+    if (startDateTime < classStartDate || endDateTime > classEndDate) {
+      return res.status(400).json({ 
+        error: 'Thời gian lịch học phải nằm trong khoảng thời gian của lớp học' 
+      });
+    }
+
+    const conflictSchedule = await ClassSchedule.findOne({
+      classInfo_id,
+      $or: [
+        {
+          start_time: { $lt: endDateTime },
+          end_time: { $gt: startDateTime }
+        }
+      ]
+    });
+
+    if (conflictSchedule) {
+      return res.status(400).json({ error: 'Đã có lịch học trong khoảng thời gian này' });
     }
     
     const classSchedule = new ClassSchedule({
-      class_id,
-      description,
-      start_time,
-      end_time,
+      classInfo_id,
+      start_time: startDateTime,
+      end_time: endDateTime,
       is_online,
       online_link,
       location,
       status: 'scheduled',
-      session_number
     });
     
     await classSchedule.save();
     
-    // Thông báo cho tất cả sinh viên và giảng viên của lớp
-    // Có thể thực hiện ở đây bằng cách gọi req.io.to(`class:${class_id}`).emit()
-    
-    res.status(201).json(classSchedule);
+    const populatedClassSchedule = await ClassSchedule.findById(classSchedule._id)
+    .populate({
+      path: 'classInfo_id',
+      select: 'code',
+      populate: {
+        path: 'course_id',
+        select: 'name code',
+        populate: {
+          path: 'department_id',
+          select: 'name'
+        }
+      }
+    });
+
+    res.status(201).json(populatedClassSchedule);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Lấy danh sách tất cả lịch học
+exports.getAllSchedules = async (req, res) => {
+  try {
+    const schedules = await ClassSchedule.find()
+    .populate({
+      path: 'classInfo_id',
+      select: 'code',
+      populate: {
+        path: 'course_id',
+        select: 'name code',
+        populate: {
+          path: 'department_id',
+          select: 'name'
+        }
+      }
+    })
+    .sort({ start_time: 1 });
+
+    res.status(200).json(schedules);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -47,42 +119,21 @@ exports.createSchedule = async (req, res) => {
 // Lấy danh sách lịch học
 exports.getSchedulesByClass = async (req, res) => {
   try {
-    const { class_id } = req.params;
-    const { from_date, to_date, status } = req.query;
+    const { classInfo_id } = req.params;
     
-    const filter = { class_id };
-    
-    // Lọc theo khoảng thời gian
-    if (from_date || to_date) {
-      filter.start_time = {};
-      if (from_date) filter.start_time.$gte = new Date(from_date);
-      if (to_date) filter.start_time.$lte = new Date(to_date);
-    }
-    
-    // Lọc theo trạng thái
-    if (status) filter.status = status;
+    const filter = { classInfo_id };
     
     const schedules = await ClassSchedule.find(filter)
+      .populate({
+        path: 'classInfo_id',
+        populate: [
+          { path: 'course_id', select: 'name code' },
+          { path: 'enrollment_id', populate: { path: 'student_id', select: 'student_code user_id', populate: { path: 'user_id', select: '-password' } } },
+          { path: 'tutor_id', select: 'tutor_code', populate: { path: 'user_id', select: '-password' } }
+        ]
+      })
       .sort({ start_time: 1 });
-      
     res.status(200).json(schedules);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-// Lấy chi tiết lịch học
-exports.getScheduleById = async (req, res) => {
-  try {
-    const schedule = await ClassSchedule.findById(req.params.id)
-      .populate('class_id', 'code name course_id')
-      .populate({ path: 'class_id', populate: { path: 'course_id', select: 'name' } });
-    
-    if (!schedule) {
-      return res.status(404).json({ error: 'Không tìm thấy lịch học' });
-    }
-    
-    res.status(200).json(schedule);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -91,46 +142,83 @@ exports.getScheduleById = async (req, res) => {
 // Cập nhật lịch học
 exports.updateSchedule = async (req, res) => {
   try {
+    const { id } = req.params;
     const {
-      description, start_time, end_time,
+      start_time, end_time,
       is_online, online_link, location, status
     } = req.body;
-    
-    // Kiểm tra thời gian bắt đầu và kết thúc
-    if (start_time && end_time && new Date(start_time) >= new Date(end_time)) {
-      return res.status(400).json({ error: 'Thời gian kết thúc phải sau thời gian bắt đầu' });
-    }
-    
-    const schedule = await ClassSchedule.findByIdAndUpdate(
-      req.params.id,
-      {
-        description,
-        start_time,
-        end_time,
-        is_online,
-        online_link,
-        location,
-        status
-      },
-      { new: true }
-    );
-    
+
+    const schedule = await ClassSchedule.findById(id);
     if (!schedule) {
       return res.status(404).json({ error: 'Không tìm thấy lịch học' });
     }
-    
-    // Gửi thông báo cập nhật
-    if (req.io) {
-      req.io.to(`class:${schedule.class_id}`).emit('schedule:updated', {
-        schedule_id: schedule._id,
-        class_id: schedule.class_id,
-        start_time: schedule.start_time,
-        end_time: schedule.end_time,
-        status: schedule.status
+
+    const classInfo = await ClassInfo.findById(schedule.classInfo_id);
+    if (!classInfo) {
+      return res.status(404).json({ error: 'Không tìm thấy thông tin lớp học' });
+    }
+
+    let updateData = {
+      is_online,
+      online_link,
+      location,
+      status
+    };
+
+    // Kiểm tra thời gian nếu có cập nhật
+    if (start_time || end_time) {
+      const newStartTime = start_time ? new Date(start_time) : schedule.start_time;
+      const newEndTime = end_time ? new Date(end_time) : schedule.end_time;
+      const classStartDate = new Date(classInfo.start_date);
+      const classEndDate = new Date(classInfo.end_date);
+
+      if (newStartTime >= newEndTime) {
+        return res.status(400).json({ error: 'Thời gian kết thúc phải sau thời gian bắt đầu' });
+      }
+
+      if (newStartTime < classStartDate || newEndTime > classEndDate) {
+        return res.status(400).json({ 
+          error: 'Thời gian lịch học phải nằm trong khoảng thời gian của lớp học' 
+        });
+      }
+
+      // Kiểm tra trùng lịch
+      const conflictSchedule = await ClassSchedule.findOne({
+        _id: { $ne: id },
+        classInfo_id: schedule.classInfo_id,
+        $or: [
+          {
+            start_time: { $lt: newEndTime },
+            end_time: { $gt: newStartTime }
+          }
+        ]
       });
+
+      if (conflictSchedule) {
+        return res.status(400).json({ error: 'Đã có lịch học trong khoảng thời gian này' });
+      }
+
+      updateData = {
+        ...updateData,
+        start_time: newStartTime,
+        end_time: newEndTime
+      };
     }
     
-    res.status(200).json(schedule);
+    const updatedSchedule = await ClassSchedule.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true })
+      .populate({
+        path: 'classInfo_id',
+        populate: [
+          { path: 'course_id', select: 'name code' },
+          { path: 'enrollment_id', populate: { path: 'student_id', select: 'student_code user_id', populate: { path: 'user_id', select: '-password' } } },
+          { path: 'tutor_id', select: 'tutor_code', populate: { path: 'user_id', select: '-password' } }
+        ]
+      });
+
+    res.status(200).json(updatedSchedule);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -139,19 +227,13 @@ exports.updateSchedule = async (req, res) => {
 // Xóa lịch học
 exports.deleteSchedule = async (req, res) => {
   try {
-    const schedule = await ClassSchedule.findByIdAndDelete(req.params.id);
+    const schedule = await ClassSchedule.findById(req.params.id);
     
     if (!schedule) {
       return res.status(404).json({ error: 'Không tìm thấy lịch học' });
     }
-    
-    // Gửi thông báo xóa
-    if (req.io) {
-      req.io.to(`class:${schedule.class_id}`).emit('schedule:deleted', {
-        schedule_id: schedule._id,
-        class_id: schedule.class_id
-      });
-    }
+
+    await schedule.deleteOne();
     
     res.status(200).json({ message: 'Đã xóa lịch học thành công' });
   } catch (error) {

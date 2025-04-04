@@ -2,6 +2,8 @@ const ClassInfo = require("../../models/education/classInfo");
 const ClassTutor = require("../../models/education/classTutor");
 const Enrollment = require("../../models/education/enrollment");
 const Course = require("../../models/education/course");
+const ClassSchedule = require("../../models/education/classSchedule");
+const ClassContent = require("../../models/education/classContent");
 const { calculateStatusClassInfo } = require("../../config/cron");
 
 // Tạo lớp học mới
@@ -134,10 +136,42 @@ exports.getClassById = async (req, res) => {
       })
       .select("is_primary");
 
+    // Lấy danh sách lịch học của lớp
+    const schedules = await ClassSchedule.find({ classInfo_id: req.params.id })
+    .select({
+      start_time: 1,
+      end_time: 1,
+      is_online: 1,
+      online_link: 1,
+      location: 1,
+      status: 1,
+    })
+    .sort({ start_time: 1 });
+
+    // Lấy danh sách nội dung của lớp
+    const contents = await ClassContent.find({ classInfo_id: req.params.id })
+    .select({
+      title: 1,
+      description: 1,
+      content_type: 1,
+      duedate: 1,
+      attachments: {
+        file_name: 1,
+        file_path: 1,
+        file_type: 1,
+        file_size: 1,
+      },
+      createdAt: 1,
+      updatedAt: 1,
+    })
+    .sort({ createdAt: -1 });
+
     const result = {
       ...classInfo.toObject(),
       enrollments,
       tutors,
+      schedules,
+      contents
     };
 
     res.status(200).json(result);
