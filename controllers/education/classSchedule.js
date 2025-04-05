@@ -116,6 +116,32 @@ exports.getAllSchedules = async (req, res) => {
   }
 };
 
+// Lấy thông tin một lịch học
+exports.getScheduleById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const schedule = await ClassSchedule.findById(id)
+      .populate({
+        path: 'classInfo_id',
+        populate: {
+          path: 'course_id',
+          select: 'name code'
+        }
+      });
+
+    if (!schedule) {
+      return res.status(404).json({ error: 'Không tìm thấy lịch học' });
+    }
+
+    console.log('Found schedule:', schedule);
+    res.status(200).json(schedule);
+  } catch (error) {
+    console.error('Error in getScheduleById:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
 // Lấy danh sách lịch học
 exports.getSchedulesByClass = async (req, res) => {
   try {

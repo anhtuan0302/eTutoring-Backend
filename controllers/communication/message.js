@@ -1,6 +1,5 @@
 const Message = require("../../models/communication/message");
-const ChatConversation = require("../../models/communication/chatConversation");
-const { handleNewMessage } = require("../../config/socket");
+const { firebase, admin } = require('../../config/firebase');
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
@@ -25,193 +24,251 @@ exports.upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
 
-// Gửi tin nhắn
 exports.sendMessage = async (req, res) => {
   try {
     const { conversation_id, content } = req.body;
     const sender_id = req.user._id;
-    let attachment = null;
 
-    // Xử lý file đính kèm nếu có
+    if (!conversation_id || (!content && !req.file)) {
+      return res.status(400).json({ 
+        error: "Thiếu thông tin bắt buộc hoặc file đính kèm" 
+      });
+    }
+
+    // Tạo message mới trong Firebase
+    const messagesRef = firebase.ref(`messages/${conversation_id}`);
+    const newMessageRef = messagesRef.push();
+    const messageId = newMessageRef.key;
+
+    // Xử lý attachment nếu có
+    let attachment = null;
     if (req.file) {
       attachment = {
         file_name: req.file.originalname,
         file_type: req.file.mimetype,
         file_path: req.file.path,
-        file_size: req.file.size,
+        file_size: req.file.size
       };
     }
 
-    // Kiểm tra có ít nhất content hoặc attachment
-    if (!content && !req.file) {
-      return res
-        .status(400)
-        .json({ error: "Tin nhắn phải có nội dung hoặc file đính kèm" });
-    }
-
-    // Kiểm tra cuộc hội thoại
-    const conversation = await ChatConversation.findOne({
-      _id: conversation_id,
-      $or: [{ user1_id: sender_id }, { user2_id: sender_id }],
-      is_deleted: false,
-    });
-
-    if (!conversation) {
-      if (req.file) fs.unlinkSync(req.file.path);
-      return res.status(404).json({ error: "Không tìm thấy cuộc hội thoại" });
-    }
-
-    // Tạo tin nhắn mới
-    const message = new Message({
+    const messageData = {
+      _id: messageId,
       conversation_id,
-      sender_id,
-      content: content || null,
+      sender_id: sender_id.toString(),
+      content: content?.trim() || null,
       attachment,
       is_read: false,
-    });
-
-    await message.save();
-
-    // Cập nhật thông tin cuộc hội thoại
-    await ChatConversation.findByIdAndUpdate(conversation_id, {
-      last_message: content || "Đã gửi một file đính kèm",
-      last_message_at: new Date(),
-    });
-
-    // Populate đầy đủ thông tin trước khi gửi response và emit socket
-    const populatedMessage = await Message.findById(message._id)
-      .populate("sender_id", "first_name last_name username avatar_path")
-      .populate("conversation_id", "user1_id user2_id");
-
-    // Emit socket event cho tin nhắn mới
-    handleNewMessage(populatedMessage);
-
-    res.status(201).json(message);
-  } catch (error) {
-    if (req.file) fs.unlinkSync(req.file.path);
-    res.status(500).json({ error: error.message });
-  }
-};
-
-// Thêm hàm updateMessage, chỉ cho phép sửa content, không cho phép sửa attachment
-exports.updateMessage = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { content } = req.body;
-    const sender_id = req.user._id;
-
-    // Kiểm tra tin nhắn tồn tại và quyền sửa
-    const message = await Message.findOne({
-      _id: id,
-      sender_id,
+      is_edited: false,
       is_deleted: false,
-    });
+      created_at: admin.database.ServerValue.TIMESTAMP,
+      updated_at: admin.database.ServerValue.TIMESTAMP
+    };
 
-    if (!message) {
-      return res.status(404).json({ error: "Không tìm thấy tin nhắn" });
-    }
+    await Promise.all([
+      // Lưu message vào Firebase
+      newMessageRef.set(messageData),
+      // Cập nhật last_message trong conversation
+      firebase.ref(`conversations/${conversation_id}`).update({
+        last_message: content?.trim() || "Đã gửi một file đính kèm",
+        last_message_at: admin.database.ServerValue.TIMESTAMP,
+        updated_at: admin.database.ServerValue.TIMESTAMP
+      }),
+      // Lưu reference vào MongoDB
+      new Message({
+        _id: messageId,
+        conversation_id,
+        sender_id
+      }).save()
+    ]);
 
-    // Không cho phép sửa tin nhắn chỉ có attachment
-    if (!message.content && message.attachment) {
-      return res
-        .status(400)
-        .json({ error: "Không thể sửa tin nhắn chỉ có file đính kèm" });
-    }
-
-    // Cập nhật nội dung
-    message.content = content;
-    await message.save();
-
-    // Nếu đây là tin nhắn cuối cùng, cập nhật last_message trong conversation
-    const conversation = await ChatConversation.findById(
-      message.conversation_id
-    );
-    if (
-      conversation.last_message_at.getTime() === message.createdAt.getTime()
-    ) {
-      conversation.last_message = content;
-      await conversation.save();
-    }
-
-    await message.populate(
-      "sender_id",
-      "first_name last_name username avatar_path"
-    );
-    res.status(200).json(message);
+    res.status(201).json(messageData);
   } catch (error) {
+    if (req.file) {
+      fs.unlinkSync(req.file.path);
+    }
     res.status(500).json({ error: error.message });
   }
 };
 
-// Lấy tin nhắn trong cuộc hội thoại
 exports.getMessages = async (req, res) => {
   try {
     const { conversation_id } = req.params;
-    const userId = req.user._id;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
+    const userId = req.user._id.toString();
 
-    // Kiểm tra cuộc hội thoại
-    const conversation = await ChatConversation.findOne({
-      _id: conversation_id,
-      $or: [{ user1_id: userId }, { user2_id: userId }],
-      is_deleted: false,
+    const messagesRef = firebase.ref(`messages/${conversation_id}`);
+    const snapshot = await messagesRef
+      .orderByChild('created_at')
+      .once('value');
+
+    const messages = [];
+    snapshot.forEach((childSnapshot) => {
+      const message = childSnapshot.val();
+      if (!message.is_deleted) {
+        messages.push(message);
+      }
     });
 
-    if (!conversation) {
-      return res.status(404).json({ error: "Không tìm thấy cuộc hội thoại" });
+    // Đánh dấu đã đọc
+    const updates = {};
+    messages.forEach(msg => {
+      if (msg.sender_id !== userId && !msg.is_read) {
+        updates[`${msg._id}/is_read`] = true;
+        updates[`${msg._id}/read_at`] = admin.database.ServerValue.TIMESTAMP;
+      }
+    });
+
+    if (Object.keys(updates).length > 0) {
+      await messagesRef.update(updates);
     }
 
-    // Lấy tin nhắn
-    const messages = await Message.find({
-      conversation_id,
-      is_deleted: false,
-    })
-      .populate("sender_id", "first_name last_name username avatar_path")
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit);
-
-    // Đánh dấu tin nhắn đã đọc
-    await Message.updateMany(
-      {
-        conversation_id,
-        sender_id: { $ne: userId },
-        is_read: false,
-      },
-      {
-        is_read: true,
-        read_at: new Date(),
-      }
-    );
-
-    res.status(200).json(messages);
+    res.status(200).json(messages.reverse());
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// Xóa tin nhắn
-exports.deleteMessage = async (req, res) => {
+exports.updateMessage = async (req, res) => {
   try {
     const { id } = req.params;
-    const sender_id = req.user._id;
+    const userId = req.user._id.toString();
+    const { content } = req.body;
 
-    const message = await Message.findOneAndUpdate(
-      {
-        _id: id,
-        sender_id,
-        is_deleted: false,
-      },
-      { is_deleted: true },
-      { new: true }
-    );
+    // Tìm message trong MongoDB để verify
+    const message = await Message.findOne({
+      _id: id,
+      sender_id: userId
+    });
 
     if (!message) {
+      return res.status(404).json({ error: "Không tìm thấy tin nhắn hoặc bạn không có quyền sửa" });
+    }
+
+    // Tìm message trong Firebase
+    const messageRef = firebase.ref(`messages/${message.conversation_id}`);
+    const snapshot = await messageRef.orderByChild('_id').equalTo(id).once('value');
+    
+    if (!snapshot.exists()) {
       return res.status(404).json({ error: "Không tìm thấy tin nhắn" });
     }
 
-    res.status(200).json({ message: "Đã xóa tin nhắn" });
+    const messageKey = Object.keys(snapshot.val())[0];
+    const messageData = snapshot.val()[messageKey];
+
+    // Kiểm tra điều kiện chỉnh sửa
+    if (messageData.is_deleted) {
+      return res.status(400).json({ error: "Không thể sửa tin nhắn đã thu hồi" });
+    }
+
+    const timeDiff = Date.now() - messageData.created_at;
+    if (timeDiff > 5 * 60 * 1000) { // 5 phút
+      return res.status(400).json({ error: "Không thể sửa tin nhắn sau 5 phút" });
+    }
+
+    // Cập nhật tin nhắn
+    const updates = {
+      content: content.trim(),
+      is_edited: true,
+      updated_at: admin.database.ServerValue.TIMESTAMP
+    };
+
+    await messageRef.child(messageKey).update(updates);
+
+    // Cập nhật last_message nếu cần
+    const conversationRef = firebase.ref(`conversations/${message.conversation_id}`);
+    const convSnapshot = await conversationRef.once('value');
+    const conversation = convSnapshot.val();
+
+    if (conversation.last_message === messageData.content) {
+      await conversationRef.update({
+        last_message: content.trim(),
+        updated_at: admin.database.ServerValue.TIMESTAMP
+      });
+    }
+
+    res.status(200).json({
+      ...messageData,
+      ...updates,
+      updated_at: Date.now()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.deleteMessage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id.toString();
+
+    // Tìm message trong MongoDB để verify
+    const message = await Message.findOne({
+      _id: id,
+      sender_id: userId
+    });
+
+    if (!message) {
+      return res.status(404).json({ error: "Không tìm thấy tin nhắn hoặc bạn không có quyền xóa" });
+    }
+
+    // Tìm và cập nhật message trong Firebase
+    const messageRef = firebase.ref(`messages/${message.conversation_id}`);
+    const snapshot = await messageRef.orderByChild('_id').equalTo(id).once('value');
+    
+    if (!snapshot.exists()) {
+      return res.status(404).json({ error: "Không tìm thấy tin nhắn" });
+    }
+
+    const messageKey = Object.keys(snapshot.val())[0];
+    const messageData = snapshot.val()[messageKey];
+
+    // Xóa file đính kèm nếu có
+    if (messageData.attachment) {
+      const filePath = path.join(__dirname, "../../../", messageData.attachment.file_path);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+
+    // Cập nhật trạng thái tin nhắn
+    await messageRef.child(messageKey).update({
+      content: null,
+      attachment: null,
+      is_deleted: true,
+      deleted_at: admin.database.ServerValue.TIMESTAMP,
+      updated_at: admin.database.ServerValue.TIMESTAMP
+    });
+
+    // Cập nhật last_message trong conversation nếu cần
+    const conversationRef = firebase.ref(`conversations/${message.conversation_id}`);
+    const convSnapshot = await conversationRef.once('value');
+    const conversation = convSnapshot.val();
+
+    if (conversation.last_message === messageData.content) {
+      // Tìm tin nhắn cuối cùng không bị xóa
+      const lastMessageSnapshot = await messageRef
+        .orderByChild('created_at')
+        .limitToLast(1)
+        .once('value');
+      
+      let newLastMessage = "Không có tin nhắn";
+      let lastMessageTime = Date.now();
+
+      lastMessageSnapshot.forEach((childSnapshot) => {
+        const lastMsg = childSnapshot.val();
+        if (!lastMsg.is_deleted) {
+          newLastMessage = lastMsg.content || "Đã gửi một file đính kèm";
+          lastMessageTime = lastMsg.created_at;
+        }
+      });
+
+      await conversationRef.update({
+        last_message: newLastMessage,
+        last_message_at: lastMessageTime,
+        updated_at: admin.database.ServerValue.TIMESTAMP
+      });
+    }
+
+    res.status(200).json({ message: "Đã thu hồi tin nhắn thành công" });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -222,35 +279,26 @@ exports.downloadAttachment = async (req, res) => {
     const { id } = req.params;
     const userId = req.user._id;
 
-    // Tìm tin nhắn và kiểm tra quyền truy cập
+    // Kiểm tra message trong MongoDB
     const message = await Message.findOne({
-      _id: id,
-      is_deleted: false,
+      _id: id
     });
 
     if (!message || !message.attachment) {
       return res.status(404).json({ error: "Không tìm thấy file đính kèm" });
     }
 
-    // Kiểm tra người dùng có quyền truy cập cuộc hội thoại
-    const conversation = await ChatConversation.findOne({
-      _id: message.conversation_id,
-      $or: [{ user1_id: userId }, { user2_id: userId }],
-      is_deleted: false,
-    });
+    // Kiểm tra quyền truy cập qua Firebase
+    const conversationRef = firebase.ref(`conversations/${message.conversation_id}`);
+    const snapshot = await conversationRef.once('value');
+    const conversation = snapshot.val();
 
-    if (!conversation) {
-      return res
-        .status(403)
-        .json({ error: "Bạn không có quyền truy cập file này" });
+    if (!conversation || (conversation.user1_id !== userId.toString() && conversation.user2_id !== userId.toString())) {
+      return res.status(403).json({ error: "Bạn không có quyền truy cập file này" });
     }
 
     // Kiểm tra file tồn tại
-    const filePath = path.join(
-      __dirname,
-      "../../../",
-      message.attachment.file_path
-    );
+    const filePath = path.join(__dirname, "../../../", message.attachment.file_path);
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: "File không tồn tại trên server" });
     }
@@ -262,40 +310,29 @@ exports.downloadAttachment = async (req, res) => {
   }
 };
 
-// Thêm hàm kiểm tra file tồn tại (không cần download)
 exports.checkAttachment = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user._id;
 
     const message = await Message.findOne({
-      _id: id,
-      is_deleted: false,
+      _id: id
     });
 
     if (!message || !message.attachment) {
       return res.status(404).json({ error: "Không tìm thấy file đính kèm" });
     }
 
-    // Kiểm tra quyền truy cập
-    const conversation = await ChatConversation.findOne({
-      _id: message.conversation_id,
-      $or: [{ user1_id: userId }, { user2_id: userId }],
-      is_deleted: false,
-    });
+    // Kiểm tra quyền truy cập qua Firebase
+    const conversationRef = firebase.ref(`conversations/${message.conversation_id}`);
+    const snapshot = await conversationRef.once('value');
+    const conversation = snapshot.val();
 
-    if (!conversation) {
-      return res
-        .status(403)
-        .json({ error: "Bạn không có quyền truy cập file này" });
+    if (!conversation || (conversation.user1_id !== userId.toString() && conversation.user2_id !== userId.toString())) {
+      return res.status(403).json({ error: "Bạn không có quyền truy cập file này" });
     }
 
-    // Kiểm tra file tồn tại
-    const filePath = path.join(
-      __dirname,
-      "../../../",
-      message.attachment.file_path
-    );
+    const filePath = path.join(__dirname, "../../../", message.attachment.file_path);
     const fileExists = fs.existsSync(filePath);
 
     res.status(200).json({

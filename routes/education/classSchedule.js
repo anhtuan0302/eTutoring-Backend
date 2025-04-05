@@ -7,6 +7,9 @@ const classScheduleController = require('../../controllers/education/classSchedu
 // Lấy danh sách tất cả lịch học
 router.get('/', auth, roleCheck(['admin', 'staff']), classScheduleController.getAllSchedules);
 
+// Lấy thông tin một lịch học
+router.get('/:id', auth, roleCheck(['admin', 'staff', 'tutor', 'student']), classScheduleController.getScheduleById);
+
 // Tạo lịch học mới
 router.post('/', auth, roleCheck(['admin', 'staff']), classScheduleController.createSchedule);
 

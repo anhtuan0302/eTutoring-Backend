@@ -52,7 +52,7 @@ exports.getAllClasses = async (req, res) => {
         path: "department_id",
         select: "name",
       },
-    });
+    }).sort({ start_date: -1 });
     // Lấy thông tin số lượng sinh viên và tutors cho mỗi lớp
     const classesWithDetails = await Promise.all(
       classes.map(async (classInfo) => {
@@ -122,7 +122,8 @@ exports.getClassById = async (req, res) => {
           path: "user_id",
           select: "-password",
         },
-      });
+      })
+      .sort({ createdAt: -1 });
 
     // Lấy thông tin giảng viên của lớp
     const tutors = await ClassTutor.find({ classInfo_id: req.params.id })

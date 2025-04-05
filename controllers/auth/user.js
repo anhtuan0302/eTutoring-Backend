@@ -9,9 +9,8 @@ const loginHistoryController = require("./loginHistory");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const { getIO } = require("../../config/socket");
+const { firebase, admin } = require("../../config/firebase");
 
-// Cấu hình multer cho upload avatar
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = "uploads/avatars";
@@ -39,56 +38,80 @@ exports.upload = multer({
   },
 });
 
+const filterUndefinedValues = (obj) => {
+  const filtered = {};
+  Object.keys(obj).forEach(key => {
+    if (obj[key] !== undefined && obj[key] !== null) {
+      filtered[key] = obj[key];
+    }
+  });
+  return filtered;
+};
+
 // Đăng nhập
 exports.loginUser = async (req, res) => {
   try {
     const { usernameOrEmail, password, remember } = req.body;
 
     if (!usernameOrEmail || !password) {
-      return res
-        .status(400)
-        .json({ error: "Vui lòng cung cấp tên đăng nhập/email và mật khẩu" });
+      return res.status(400).json({ error: "Vui lòng cung cấp tên đăng nhập/email và mật khẩu" });
     }
 
-    // Tìm user theo tên đăng nhập hoặc email
     const user = await User.findOne({
       $or: [{ username: usernameOrEmail }, { email: usernameOrEmail }],
     });
 
     if (!user) {
-      return res
-        .status(401)
-        .json({ error: "Tên đăng nhập/email hoặc mật khẩu không đúng" });
+      return res.status(401).json({ error: "Tên đăng nhập/email hoặc mật khẩu không đúng" });
     }
 
-    // Kiểm tra mật khẩu
     const isPasswordMatch = await bcrypt.compare(password, user.password);
 
     if (!isPasswordMatch) {
-      return res
-        .status(401)
-        .json({ error: "Tên đăng nhập/email hoặc mật khẩu không đúng" });
+      return res.status(401).json({ error: "Tên đăng nhập/email hoặc mật khẩu không đúng" });
     }
 
-    // Tạo tokens
     const tokens = await tokenController.generateAuthTokens(user._id, req.ip, remember || false);
 
-    // Cập nhật trạng thái người dùng và emit event
+    // Cập nhật trạng thái online trong MongoDB
     user.status = "online";
     user.lastActive = new Date();
     await user.save();
 
-    // Lấy io instance và emit event
-    const io = getIO();
-    io.emit("user:status", {
-      userId: user._id,
-      status: "online",
+    // Chuẩn bị dữ liệu presence
+    const presenceData = filterUndefinedValues({
+      status: 'online',
+      lastActive: admin.database.ServerValue.TIMESTAMP,
       username: user.username,
+      email: user.email,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      avatar_path: user.avatar_path || null // Đảm bảo không có undefined
     });
 
-    // Tạo login history bằng cách gọi controller
+    const presenceRef = firebase.ref(`presence/${user._id}`);
+    await presenceRef.set(presenceData);
+
+    // Thiết lập disconnect handler
+    const connectedRef = firebase.ref('.info/connected');
+    connectedRef.on('value', async (snapshot) => {
+      if (snapshot.val() === false) {
+        return;
+      }
+
+      try {
+        const offlineData = {
+          ...presenceData,
+          status: 'offline',
+          lastActive: admin.database.ServerValue.TIMESTAMP
+        };
+        await presenceRef.onDisconnect().set(offlineData);
+      } catch (error) {
+        console.error('Error setting onDisconnect:', error);
+      }
+    });
+
     try {
-      // Tạo một mock request object với thông tin cần thiết
       const historyReq = {
         body: {
           user: user._id,
@@ -97,36 +120,21 @@ exports.loginUser = async (req, res) => {
         },
         headers: req.headers,
       };
-
-      // Tạo một mock response object
       const historyRes = {
-        status: () => ({ json: () => {} }), // Mock response methods
+        status: () => ({ json: () => {} }),
       };
-
       await loginHistoryController.createLoginHistory(historyReq, historyRes);
     } catch (historyError) {
       console.error("Error creating login history:", historyError);
-      // Không return lỗi vì đăng nhập vẫn thành công
     }
 
-    // Tùy theo role, lấy thêm thông tin
     let profileInfo = null;
-
     if (user.role === "student") {
-      profileInfo = await Student.findOne({ user_id: user._id }).populate(
-        "department_id",
-        "name"
-      );
+      profileInfo = await Student.findOne({ user_id: user._id }).populate("department_id", "name");
     } else if (user.role === "tutor") {
-      profileInfo = await Tutor.findOne({ user_id: user._id }).populate(
-        "department_id",
-        "name"
-      );
+      profileInfo = await Tutor.findOne({ user_id: user._id }).populate("department_id", "name");
     } else if (user.role === "staff") {
-      profileInfo = await Staff.findOne({ user_id: user._id }).populate(
-        "department_id",
-        "name"
-      );
+      profileInfo = await Staff.findOne({ user_id: user._id }).populate("department_id", "name");
     }
 
     res.status(200).json({
@@ -444,7 +452,7 @@ exports.logoutUser = async (req, res) => {
 
     const token = authHeader.replace('Bearer ', '');
 
-    // Thu hồi access token hiện tại
+    // Thu hồi access token
     const tokenDoc = await Token.findOne({
       value: token,
       type: 'access',
@@ -457,7 +465,7 @@ exports.logoutUser = async (req, res) => {
       await tokenDoc.save();
     }
 
-    // Thu hồi tất cả refresh token của user
+    // Thu hồi refresh tokens
     await Token.updateMany(
       {
         user_id: user._id,
@@ -470,18 +478,25 @@ exports.logoutUser = async (req, res) => {
       }
     );
 
-    // Cập nhật trạng thái user
+    // Cập nhật trạng thái offline trong MongoDB
     user.status = 'offline';
     user.lastActive = new Date();
     await user.save();
 
-    // Emit socket event
-    const io = getIO();
-    io.emit('user:status', {
-      userId: user._id,
+    // Chuẩn bị dữ liệu presence
+    const presenceData = filterUndefinedValues({
       status: 'offline',
-      username: user.username
+      lastActive: admin.database.ServerValue.TIMESTAMP,
+      username: user.username,
+      email: user.email,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      avatar_path: user.avatar_path || null // Đảm bảo không có undefined
     });
+
+    // Cập nhật presence trong Firebase
+    const presenceRef = firebase.ref(`presence/${user._id}`);
+    await presenceRef.set(presenceData);
 
     res.status(200).json({ message: 'Đăng xuất thành công' });
   } catch (error) {

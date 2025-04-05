@@ -1,8 +1,7 @@
 const ChatConversation = require('../../models/communication/chatConversation');
 const User = require('../../models/auth/user');
-const { sendToUser } = require('../../config/socket');
+const { firebase, admin } = require('../../config/firebase');
 
-// Tạo cuộc hội thoại mới
 exports.createConversation = async (req, res) => {
   try {
     const { user2_id } = req.body;
@@ -19,77 +18,115 @@ exports.createConversation = async (req, res) => {
       $or: [
         { user1_id, user2_id },
         { user1_id: user2_id, user2_id: user1_id }
-      ],
-      is_deleted: false
-    }).populate('user1_id user2_id', 'first_name last_name username avatar_path status');
+      ]
+    }).populate(['user1_id', 'user2_id']);
 
     if (conversation) {
-      // Thông báo cho cả hai người dùng về cuộc trò chuyện
-      sendToUser(user1_id, 'conversation:update', conversation);
-      sendToUser(user2_id, 'conversation:update', conversation);
-      return res.status(200).json(conversation);
+      // Lấy thông tin từ Firebase
+      const firebaseConv = await firebase.ref(`conversations/${conversation._id}`).once('value');
+      return res.status(200).json({
+        ...conversation.toObject(),
+        ...firebaseConv.val()
+      });
     }
 
-    // Tạo cuộc hội thoại mới
-    conversation = new ChatConversation({
-      user1_id,
-      user2_id,
+    // Tạo conversation mới trong Firebase
+    const conversationsRef = firebase.ref('conversations');
+    const newConversationRef = conversationsRef.push();
+    const conversationId = newConversationRef.key;
+
+    // Lưu thông tin conversation vào Firebase
+    await newConversationRef.set({
+      id: conversationId,
+      user1_id: user1_id.toString(),
+      user2_id: user2_id.toString(),
       last_message: null,
-      last_message_at: null
+      last_message_at: null,
+      created_at: admin.database.ServerValue.TIMESTAMP,
+      updated_at: admin.database.ServerValue.TIMESTAMP
     });
 
+    // Lưu reference vào MongoDB
+    conversation = new ChatConversation({
+      _id: conversationId,
+      user1_id,
+      user2_id
+    });
     await conversation.save();
-    await conversation.populate('user1_id user2_id', 'first_name last_name username avatar_path status');
+    await conversation.populate(['user1_id', 'user2_id']);
 
-    // Thông báo cho cả hai người dùng về cuộc trò chuyện mới
-    sendToUser(user1_id, 'conversation:new', conversation);
-    sendToUser(user2_id, 'conversation:new', conversation);
+    const result = {
+      ...conversation.toObject(),
+      last_message: null,
+      last_message_at: null,
+      created_at: Date.now()
+    };
 
-    res.status(201).json(conversation);
+    res.status(201).json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// Lấy danh sách cuộc hội thoại
 exports.getConversations = async (req, res) => {
   try {
-    const userId = req.user._id;
-
-    const conversations = await ChatConversation.find({
+    const userId = req.user._id.toString();
+    
+    // Lấy conversations từ MongoDB để có thông tin user
+    const mongoConversations = await ChatConversation.find({
       $or: [
         { user1_id: userId },
         { user2_id: userId }
-      ],
-      is_deleted: false
-    })
-    .populate('user1_id user2_id', 'first_name last_name username avatar_path status')
-    .sort({ last_message_at: -1, createdAt: -1 });
+      ]
+    }).populate(['user1_id', 'user2_id']);
 
-    res.status(200).json(conversations);
+    // Lấy thông tin realtime từ Firebase
+    const conversationsRef = firebase.ref('conversations');
+    const snapshot = await conversationsRef
+      .orderByChild('updated_at')
+      .once('value');
+    
+    const conversations = [];
+    snapshot.forEach((childSnapshot) => {
+      const firebaseConv = childSnapshot.val();
+      if (firebaseConv.user1_id === userId || firebaseConv.user2_id === userId) {
+        // Tìm thông tin MongoDB tương ứng
+        const mongoConv = mongoConversations.find(c => c._id === firebaseConv.id);
+        if (mongoConv) {
+          conversations.push({
+            ...mongoConv.toObject(),
+            ...firebaseConv
+          });
+        }
+      }
+    });
+
+    res.status(200).json(conversations.reverse());
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// Xóa cuộc hội thoại
 exports.deleteConversation = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user._id;
+    const userId = req.user._id.toString();
 
-    const conversation = await ChatConversation.findOneAndUpdate(
-      {
-        _id: id,
-        $or: [{ user1_id: userId }, { user2_id: userId }]
-      },
-      { is_deleted: true },
-      { new: true }
-    );
+    // Kiểm tra quyền xóa
+    const conversationRef = firebase.ref(`conversations/${id}`);
+    const snapshot = await conversationRef.once('value');
+    const conv = snapshot.val();
 
-    if (!conversation) {
+    if (!conv || (conv.user1_id !== userId && conv.user2_id !== userId)) {
       return res.status(404).json({ error: 'Không tìm thấy cuộc hội thoại' });
     }
+
+    // Xóa conversation và messages
+    await Promise.all([
+      conversationRef.remove(),
+      firebase.ref(`messages/${id}`).remove(),
+      ChatConversation.findByIdAndDelete(id)
+    ]);
 
     res.status(200).json({ message: 'Đã xóa cuộc hội thoại' });
   } catch (error) {

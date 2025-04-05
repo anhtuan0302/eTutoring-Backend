@@ -7,11 +7,10 @@ const { initCronJobs } = require('./config/cron');
 require("dotenv").config();
 const connectMongoose = require('./config/mongoose');
 const initAdmin = require('./config/initAdmin');
-const socketConfig = require('./config/socket');
+const { firebase } = require('./config/firebase');
 
 const app = express();
 const server = http.createServer(app);
-socketConfig.setupSocketServer(server);
 
 // Middleware
 app.use(cors());
@@ -82,6 +81,6 @@ app.use((error, req, res, next) => {
     res.status(500).send({ error: 'Đã xảy ra lỗi máy chủ.' });
 });
 
-server.listen(process.env.PORT, () => {
+app.listen(process.env.PORT, () => {
     console.log(`🚀 Server is running on port ${process.env.PORT}`);
 });
