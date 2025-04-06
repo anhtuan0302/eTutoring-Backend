@@ -4,9 +4,9 @@ const postReactionController = require('../../controllers/blog/postReaction');
 const auth = require('../../middleware/auth');
 
 
-router.get('/post/:post_id', auth, postReactionController.getReactions);
+router.get('/post/:post_id', auth, postReactionController.getAllReactions);
 
-router.post('/post/:post_id', auth, postReactionController.addReaction);
+router.post('/post/:post_id', auth, postReactionController.createReaction);
 
 router.get('/post/:post_id/me', auth, postReactionController.getUserReaction);
 

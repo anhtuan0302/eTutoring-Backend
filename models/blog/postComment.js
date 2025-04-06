@@ -1,20 +1,18 @@
 const mongoose = require('mongoose');
 
 const postCommentSchema = new mongoose.Schema({
+  _id: {
+    type: String, // Firebase comment ID
+    required: true
+  },
   post_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'post',
+    type: String, // Firebase post ID
     required: true
   },
   user_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'user',
     required: true
-  },
-  content: {
-    type: String,
-    required: true,
-    maxlength: 1000
   }
 }, {
   timestamps: true

@@ -1,26 +1,21 @@
 const mongoose = require('mongoose');
 
 const postReactionSchema = new mongoose.Schema({
+  _id: {
+    type: String, // Firebase reaction ID
+    required: true
+  },
   post_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'post',
+    type: String, // Firebase post ID
     required: true
   },
   user_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'user',
     required: true
-  },
-  reaction_type: {
-    type: String,
-    enum: ['like', 'love', 'haha', 'wow', 'sad', 'angry'],
-    required: true
   }
 }, {
   timestamps: true
 });
-
-// Đảm bảo mỗi người dùng chỉ có một loại phản ứng cho mỗi bài viết
-postReactionSchema.index({ post_id: 1, user_id: 1 }, { unique: true });
 
 module.exports = mongoose.model('postReaction', postReactionSchema);

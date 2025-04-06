@@ -18,4 +18,8 @@ router.patch('/:id/moderate', auth, roleCheck(['admin', 'staff', 'tutor']), post
 
 router.delete('/:id/attachments/:attachmentId', auth, postController.removeAttachment);
 
+router.post('/:id/view', auth, postController.addView);
+
+router.get('/:id/viewers', auth, postController.getViewers);
+
 module.exports = router;
