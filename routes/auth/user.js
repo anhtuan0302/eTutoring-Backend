@@ -24,8 +24,7 @@ router.post('/avatar', auth, userController.upload.single('avatar'), userControl
 
 // Lấy danh sách người dùng (chỉ admin)
 router.get('/', 
-  auth, 
-  roleCheck(['admin']), 
+  auth,
   userController.getAllUsers
 );
 

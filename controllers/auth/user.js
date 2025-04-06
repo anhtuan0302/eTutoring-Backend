@@ -344,15 +344,9 @@ exports.updateAvatar = async (req, res) => {
   }
 };
 
-// Lấy danh sách người dùng (admin only)
+
 exports.getAllUsers = async (req, res) => {
   try {
-    // Kiểm tra quyền admin
-    if (req.user.role !== "admin") {
-      return res
-        .status(403)
-        .json({ error: "Không có quyền thực hiện thao tác này" });
-    }
 
     // Query parameters
     const { role, search, limit = 10, page = 1 } = req.query;
