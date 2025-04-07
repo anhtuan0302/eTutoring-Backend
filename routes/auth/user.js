@@ -17,18 +17,18 @@ router.get('/me', auth, userController.getCurrentUser);
 router.put('/me', auth, userController.updateUser);
 
 // Thay đổi mật khẩu (yêu cầu đăng nhập)
-router.post('/change-password', auth, userController.changePassword);
+router.post('/changePassword', auth, userController.changePassword);
 
 // Cập nhật avatar (yêu cầu đăng nhập)
 router.post('/avatar', auth, userController.upload.single('avatar'), userController.updateAvatar);
 
-// Lấy danh sách người dùng (chỉ admin)
+// Lấy danh sách người dùng
 router.get('/', 
   auth,
   userController.getAllUsers
 );
 
-// Lấy thông tin người dùng theo ID (yêu cầu đăng nhập)
+// Lấy thông tin người dùng theo ID
 router.get('/:id', auth, userController.getUserById);
 
 module.exports = router;

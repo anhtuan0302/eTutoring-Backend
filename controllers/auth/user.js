@@ -13,7 +13,7 @@ const { firebase, admin } = require("../../config/firebase");
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = "uploads/avatars";
+    const uploadDir = "uploads/avatar";
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
@@ -256,25 +256,34 @@ exports.changePassword = async (req, res) => {
   try {
     const { current_password, new_password, confirm_password } = req.body;
 
+    // Validate input
     if (!current_password || !new_password || !confirm_password) {
-      return res.status(400).json({ error: "Vui lòng điền đầy đủ thông tin" });
+      return res.status(400).json({ 
+        error: "Vui lòng cung cấp đầy đủ thông tin" 
+      });
     }
 
+    // Validate password match
     if (new_password !== confirm_password) {
-      return res.status(400).json({ error: "Mật khẩu xác nhận không khớp" });
+      return res.status(400).json({ 
+        error: "Mật khẩu xác nhận không khớp" 
+      });
     }
 
-    if (new_password.length < 8) {
-      return res
-        .status(400)
-        .json({ error: "Mật khẩu mới phải có ít nhất 8 ký tự" });
+    // Validate password length
+    if (new_password.length < 6) {
+      return res.status(400).json({ 
+        error: "Mật khẩu mới phải có ít nhất 6 ký tự" 
+      });
     }
 
     // Tìm người dùng
     const user = await User.findById(req.user._id);
 
     if (!user) {
-      return res.status(404).json({ error: "Không tìm thấy người dùng" });
+      return res.status(404).json({ 
+        error: "Không tìm thấy người dùng" 
+      });
     }
 
     // Kiểm tra mật khẩu hiện tại
@@ -284,7 +293,9 @@ exports.changePassword = async (req, res) => {
     );
 
     if (!isPasswordMatch) {
-      return res.status(401).json({ error: "Mật khẩu hiện tại không đúng" });
+      return res.status(401).json({ 
+        error: "Mật khẩu hiện tại không đúng" 
+      });
     }
 
     // Mã hóa mật khẩu mới
@@ -295,10 +306,14 @@ exports.changePassword = async (req, res) => {
     user.password = hashedPassword;
     await user.save();
 
-    res.status(200).json({ message: "Thay đổi mật khẩu thành công" });
+    res.status(200).json({ 
+      message: "Thay đổi mật khẩu thành công" 
+    });
   } catch (error) {
     console.error("Error changing password:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      error: "Lỗi server: " + error.message 
+    });
   }
 };
 

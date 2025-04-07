@@ -1,5 +1,6 @@
 const LoginHistory = require('../../models/auth/loginHistory');
 const User = require('../../models/auth/user');
+const Token = require('../../models/auth/token');
 
 // Lưu lịch sử đăng nhập
 exports.createLoginHistory = async (req, res) => {
@@ -52,7 +53,45 @@ exports.getUserLoginHistory = async (req, res) => {
   }
 };
 
-// Xóa lịch sử đăng nhập của người dùng
+// Xóa một lịch sử đăng nhập và token của thiết bị
+exports.deleteLoginHistory = async (req, res) => {
+  try {
+    const { historyId } = req.params;
+    
+    const loginHistory = await LoginHistory.findById(historyId);
+    if (!loginHistory) {
+      return res.status(404).json({ error: 'Không tìm thấy lịch sử đăng nhập' });
+    }
+    
+    // Chỉ cho phép người dùng xóa lịch sử của chính mình hoặc admin
+    if (req.user.role !== 'admin' && req.user._id.toString() !== loginHistory.user.toString()) {
+      return res.status(403).json({ error: 'Không có quyền thực hiện thao tác này' });
+    }
+
+    // Thu hồi token của thiết bị này
+    await Token.updateMany(
+      {
+        user_id: loginHistory.user,
+        created_by_ip: loginHistory.ipaddress,
+        is_revoked: false
+      },
+      {
+        is_revoked: true,
+        revoked_at: new Date()
+      }
+    );
+    
+    // Xóa lịch sử đăng nhập
+    await LoginHistory.findByIdAndDelete(historyId);
+    
+    res.status(200).json({ message: 'Đã xóa lịch sử đăng nhập và đăng xuất thiết bị thành công' });
+  } catch (error) {
+    console.error('Error deleting login history:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Xóa tất cả lịch sử đăng nhập và token của một user
 exports.clearUserLoginHistory = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -68,9 +107,22 @@ exports.clearUserLoginHistory = async (req, res) => {
       return res.status(403).json({ error: 'Không có quyền thực hiện thao tác này' });
     }
     
+    // Thu hồi tất cả token của user
+    await Token.updateMany(
+      {
+        user_id: userId,
+        is_revoked: false
+      },
+      {
+        is_revoked: true,
+        revoked_at: new Date()
+      }
+    );
+
+    // Xóa tất cả lịch sử đăng nhập
     await LoginHistory.deleteMany({ user: userId });
     
-    res.status(200).json({ message: 'Đã xóa lịch sử đăng nhập thành công' });
+    res.status(200).json({ message: 'Đã xóa tất cả lịch sử đăng nhập và đăng xuất tất cả thiết bị thành công' });
   } catch (error) {
     console.error('Error clearing user login history:', error);
     res.status(500).json({ error: error.message });
