@@ -31,4 +31,10 @@ router.get('/',
 // Lấy thông tin người dùng theo ID
 router.get('/:id', auth, userController.getUserById);
 
+// Lấy thông tin sinh viên theo user_id
+router.get('/student/:user_id', auth, userController.getStudentByUserId);
+
+// Lấy thông tin giảng viên theo user_id
+router.get('/tutor/:user_id', auth, userController.getTutorByUserId);
+
 module.exports = router;

@@ -1,5 +1,7 @@
 const ClassSchedule = require('../../models/education/classSchedule');
 const ClassInfo = require('../../models/education/classInfo');
+const ClassTutor = require('../../models/education/classTutor');
+const Enrollment = require('../../models/education/enrollment');
 
 // Tạo lịch học mới
 exports.createSchedule = async (req, res) => {
@@ -138,6 +140,53 @@ exports.getScheduleById = async (req, res) => {
     res.status(200).json(schedule);
   } catch (error) {
     console.error('Error in getScheduleById:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.getSchedulesForStudentById = async (req, res) => {
+  try {
+    const { student_id } = req.params;
+    
+    // Lấy tất cả lớp học mà sinh viên đã đăng ký
+    const enrollments = await Enrollment.find({ student_id });
+    
+    const classSchedules = await ClassSchedule.find({
+      classInfo_id: { $in: enrollments.map(enrollment => enrollment.classInfo_id) }
+    }).populate({
+      path: 'classInfo_id',
+      populate: [
+        {
+          path: 'course_id',
+          select: 'name code'
+        }
+      ]
+    })
+    .sort({ start_time: 1 });
+    
+    
+    res.status(200).json(classSchedules);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.getSchedulesForTutorById = async (req, res) => {
+  try {
+    const { tutor_id } = req.params;
+
+    const classTutor = await ClassTutor.find({ tutor_id });
+
+    const classSchedules = await ClassSchedule.find({
+      classInfo_id: { $in: classTutor.map(classTutor => classTutor.classInfo_id) }
+    }).populate({
+      path: 'classInfo_id',
+      populate: [
+        { path: 'course_id', select: 'name code' },
+      ]
+    });
+    res.status(200).json(classSchedules);
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };

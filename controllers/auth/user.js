@@ -513,3 +513,25 @@ exports.logoutUser = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+exports.getStudentByUserId = async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    const student = await Student.findOne({ user_id }).populate('department_id', 'name');
+    res.status(200).json(student);
+  } catch (error) {
+    console.error('Error getting student by user id:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.getTutorByUserId = async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    const tutor = await Tutor.findOne({ user_id }).populate('department_id', 'name');
+    res.status(200).json(tutor);
+  } catch (error) {
+    console.error('Error getting tutor by user id:', error);
+    res.status(500).json({ error: error.message });
+  }
+};

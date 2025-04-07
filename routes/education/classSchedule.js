@@ -22,4 +22,10 @@ router.patch('/:id', auth, roleCheck(['admin', 'staff']), classScheduleControlle
 // Xóa lịch học
 router.delete('/:id', auth, roleCheck(['admin', 'staff']), classScheduleController.deleteSchedule);
 
+// Lấy danh sách lịch học của sinh viên
+router.get('/student/:student_id', auth, classScheduleController.getSchedulesForStudentById);
+
+// Lấy danh sách lịch dạy của giảng viên
+router.get('/tutor/:tutor_id', auth, classScheduleController.getSchedulesForTutorById);
+
 module.exports = router;
