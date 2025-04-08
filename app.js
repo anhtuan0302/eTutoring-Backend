@@ -1,6 +1,5 @@
 const express = require("express");
 const cors = require('cors');
-const http = require('http');
 const path = require('path');
 const { initCronJobs } = require('./config/cron');
 
@@ -10,7 +9,6 @@ const initAdmin = require('./config/initAdmin');
 const { firebase } = require('./config/firebase');
 
 const app = express();
-const server = http.createServer(app);
 
 // Middleware
 app.use(cors());
@@ -35,6 +33,7 @@ const tutorRoutes = require('./routes/organization/tutor');
 
 const chatConversationRoutes = require('./routes/communication/chatConversation');
 const messageRoutes = require('./routes/communication/message');
+const notificationRoutes = require('./routes/communication/notification');
 
 const postRoutes = require('./routes/blog/post');
 const postCommentRoutes = require('./routes/blog/postComment');
@@ -61,6 +60,7 @@ app.use('/api/tutor', tutorRoutes);
 
 app.use('/api/chat/conversation', chatConversationRoutes);
 app.use('/api/chat/message', messageRoutes);
+app.use('/api/notification', notificationRoutes);
 
 app.use('/api/blog/post', postRoutes);
 app.use('/api/blog/postComment', postCommentRoutes);

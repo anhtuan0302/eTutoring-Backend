@@ -1,13 +1,13 @@
 const mongoose = require('mongoose');
 
 const notificationSchema = new mongoose.Schema({
-  user: {
+  _id: {
+    type: String, // Firebase notification ID
+    required: true,
+  },
+  user_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'user',
-    required: true
-  },
-  title: {
-    type: String,
     required: true
   },
   content: {
@@ -16,7 +16,8 @@ const notificationSchema = new mongoose.Schema({
   },
   notification_type: {
     type: String,
-    required: true
+    required: true,
+    enum: ['user', 'post', 'assignment', 'class', 'attendance', 'submission']
   },
   reference_type: {
     type: String
@@ -24,18 +25,10 @@ const notificationSchema = new mongoose.Schema({
   reference_id: {
     type: mongoose.Schema.Types.ObjectId
   },
-  should_email: {
-    type: Boolean,
-    default: false
-  },
   is_read: {
     type: Boolean,
     default: false
   },
-  is_email_sent: {
-    type: Boolean,
-    default: false
-  }
 }, {
   timestamps: true
 });
