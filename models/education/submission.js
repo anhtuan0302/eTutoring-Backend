@@ -56,10 +56,6 @@ const submissionSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
-  is_late: {
-    type: Boolean,
-    default: false
-  },
   grade: {
     score: {
       type: Number,

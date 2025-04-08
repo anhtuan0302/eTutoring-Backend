@@ -8,15 +8,12 @@ const submissionController = require('../../controllers/education/submission');
 router.post('/', 
   auth, 
   roleCheck(['student']),
-  submissionController.upload.array('attachments'),
+  submissionController.upload,
   submissionController.createSubmission
 );
 
 // Lấy danh sách bài nộp của bài tập
 router.get('/assignment/:assignment_id', auth, submissionController.getSubmissionsByAssignment);
-
-// Lấy bài nộp của sinh viên
-router.get('/assignment/:assignment_id/student/:student_id', auth, submissionController.getStudentSubmission);
 
 // Chấm điểm bài nộp
 router.post('/:id/grade', auth, roleCheck(['tutor']), submissionController.gradeSubmission);
