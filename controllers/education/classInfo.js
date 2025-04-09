@@ -243,3 +243,58 @@ exports.deleteClass = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+// Get class students
+exports.getClassStudents = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const enrollments = await Enrollment.find({ classInfo_id: id })
+      .populate({
+        path: 'student_id',
+        populate: {
+          path: 'user_id',
+          select: '-password'
+        }
+      })
+      .populate({
+        path: 'student_id',
+        populate: {
+          path: 'department_id',
+          select: 'name'
+        }
+      });
+
+    res.status(200).json(enrollments);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Get class tutors
+exports.getClassTutors = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const classTutors = await ClassTutor.find({ classInfo_id: id })
+      .populate({
+        path: 'tutor_id',
+        populate: {
+          path: 'user_id',
+          select: '-password'
+        }
+      })
+      .populate({
+        path: 'tutor_id',
+        populate: {
+          path: 'department_id',
+          select: 'name'
+        }
+      })
+      .sort({ is_primary: -1 });
+
+    res.status(200).json(classTutors);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};

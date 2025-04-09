@@ -8,7 +8,7 @@ const classContentController = require('../../controllers/education/classContent
 router.post('/',
   auth,
   roleCheck(['admin', 'staff', 'tutor']),
-  classContentController.upload.array('attachments'),
+  classContentController.upload.array('files'),
   classContentController.createContent
 );
 
@@ -22,7 +22,7 @@ router.get('/:id', auth, classContentController.getContentById);
 router.put('/:id',
   auth,
   roleCheck(['admin', 'staff', 'tutor']),
-  classContentController.upload.array('attachments'),
+  classContentController.upload.array('files'),
   classContentController.updateContent
 );
 

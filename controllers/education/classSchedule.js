@@ -31,11 +31,11 @@ exports.createSchedule = async (req, res) => {
     const classStartDate = new Date(classInfo.start_date);
     const classEndDate = new Date(classInfo.end_date);
 
-    if (startDateTime <= currentDateTime) {
-      return res.status(400).json({ 
-        error: 'Không thể tạo lịch học trong quá khứ. Thời gian bắt đầu phải sau thời điểm hiện tại' 
-      });
-    }
+    // if (startDateTime <= currentDateTime) {
+    //   return res.status(400).json({ 
+    //     error: 'Không thể tạo lịch học trong quá khứ. Thời gian bắt đầu phải sau thời điểm hiện tại' 
+    //   });
+    // }
     
     // Kiểm tra thời gian bắt đầu và kết thúc
     if (startDateTime >= endDateTime) {

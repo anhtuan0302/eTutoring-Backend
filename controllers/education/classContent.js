@@ -45,6 +45,11 @@ exports.upload = multer({
 // Tạo nội dung mới
 exports.createContent = async (req, res) => {
   try {
+    console.log('Request body:', req.body);
+    console.log('Request files:', req.files);
+    console.log('Request file:', req.file);
+    console.log('Headers:', req.headers);
+    
     const { classInfo_id, title, description, content_type, duedate } = req.body;
     
     // Kiểm tra lớp học tồn tại
@@ -60,6 +65,9 @@ exports.createContent = async (req, res) => {
       file_type: file.mimetype,
       file_size: file.size
     })) || [];
+    
+    console.log('Files received:', req.files);
+    console.log('Attachments created:', attachments);
     
     const classContent = new ClassContent({
       classInfo_id,
@@ -88,8 +96,15 @@ exports.createContent = async (req, res) => {
 
     res.status(201).json(populatedClassContent);
   } catch (error) {
+    console.error('Error creating content:', error);
     if (req.files) {
-      req.files.forEach(file => fs.unlinkSync(file.path));
+      req.files.forEach(file => {
+        try {
+          fs.unlinkSync(file.path);
+        } catch (unlinkError) {
+          console.error('Error deleting file:', unlinkError);
+        }
+      });
     }
     res.status(500).json({ error: error.message });
   }

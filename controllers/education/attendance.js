@@ -148,25 +148,35 @@ exports.getStudentAttendance = async (req, res) => {
   try {
     const { class_id, student_id } = req.params;
     
-    // Lấy tất cả lịch học của lớp
-    const schedules = await ClassSchedule.find({ classInfo_id: class_id });
-    const scheduleIds = schedules.map(s => s._id);
+    const schedules = await ClassSchedule.find({ 
+      classInfo_id: class_id,
+      status: "completed"
+    });
     
-    // Lấy điểm danh của sinh viên
     const attendances = await Attendance.find({
-      class_schedule_id: { $in: scheduleIds },
-      student_id
-    })
-      .populate("class_schedule_id")
-      .populate("created_by", "-password");
+      class_schedule_id: { $in: schedules.map(s => s._id) },
+      student_id: student_id
+    }).populate([
+      {
+        path: "class_schedule_id",
+        select: "start_time end_time status"
+      },
+      {
+        path: "created_by",
+        select: "first_name last_name"
+      }
+    ]);
 
-    // Thống kê
+    // Thống kê chi tiết
     const stats = {
-      total: schedules.length,
-      present: attendances.filter(a => a.status === 'present').length,
-      absent: attendances.filter(a => a.status === 'absent').length,
-      late: attendances.filter(a => a.status === 'late').length,
-      not_recorded: schedules.length - attendances.length
+      totalSchedules: schedules.length, // Tổng số buổi học
+      absentCount: attendances.filter(a => a.status === 'absent').length, // Số buổi vắng
+      presentCount: attendances.filter(a => a.status === 'present').length, // Số buổi có mặt
+      lateCount: attendances.filter(a => a.status === 'late').length, // Số buổi đi trễ
+      notRecordedCount: schedules.length - attendances.length, // Số buổi chưa điểm danh
+      absentRate: schedules.length > 0 
+        ? Math.round(((attendances.filter(a => a.status === 'absent').length + (schedules.length - attendances.length)) / schedules.length) * 100)
+        : 0 // Tỷ lệ vắng mặt (tính cả buổi chưa điểm danh là vắng)
     };
     
     res.status(200).json({
@@ -174,6 +184,7 @@ exports.getStudentAttendance = async (req, res) => {
       stats
     });
   } catch (error) {
+    console.error("Error in getStudentAttendance:", error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -268,10 +279,6 @@ exports.deleteAttendance = async (req, res) => {
 exports.bulkAttendance = async (req, res) => {
   try {
     const { class_schedule_id, attendances } = req.body;
-    console.log('Processing bulk attendance:', {
-      attendancesCount: attendances?.length,
-      class_schedule_id
-    });
     
     // Kiểm tra lịch học tồn tại
     const schedule = await ClassSchedule.findById(class_schedule_id)
@@ -297,9 +304,7 @@ exports.bulkAttendance = async (req, res) => {
     
     // Xử lý từng sinh viên
     for (const item of attendances) {
-      try {
-        console.log('Processing attendance for student:', item.student_id);
-        
+      try {        
         // Kiểm tra sinh viên đã đăng ký lớp học chưa
         const enrollment = await Enrollment.findOne({ 
           classInfo_id: schedule.classInfo_id._id,
@@ -307,7 +312,6 @@ exports.bulkAttendance = async (req, res) => {
         });
         
         if (!enrollment) {
-          console.log('Student not enrolled:', item.student_id);
           errors.push({
             student_id: item.student_id,
             error: 'Sinh viên chưa đăng ký lớp học này'
@@ -349,7 +353,6 @@ exports.bulkAttendance = async (req, res) => {
         ]);
         
         results.push(attendance);
-        console.log('Successfully processed attendance for student:', item.student_id);
       } catch (error) {
         console.error('Error processing student:', item.student_id, error);
         errors.push({
@@ -358,11 +361,6 @@ exports.bulkAttendance = async (req, res) => {
         });
       }
     }
-    
-    console.log(`Processed ${attendances.length} attendances:`, {
-      success: results.length,
-      errors: errors.length
-    });
     
     res.status(200).json({
       success: results.length,
