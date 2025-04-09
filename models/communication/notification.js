@@ -20,7 +20,7 @@ const notificationSchema = new mongoose.Schema({
   },
   reference_type: {
     type: String,
-    enum: ['user', 'post', 'assignment', 'class', 'attendance', 'submission']
+    enum: ['user', 'post', 'assignment', 'class', 'attendance', 'submission', 'material']
   },
   reference_id: {
     type: mongoose.Schema.Types.ObjectId
