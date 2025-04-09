@@ -4,6 +4,8 @@ const ClassInfo = require('../../models/education/classInfo');
 const Student = require('../../models/organization/student');
 const Enrollment = require('../../models/education/enrollment');
 const ClassTutor = require('../../models/education/classTutor');
+const Tutor = require('../../models/organization/tutor');
+const User = require('../../models/auth/user');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -49,11 +51,24 @@ const checkStudentInClass = async (studentId, classInfoId) => {
 
 // Kiểm tra giảng viên có thuộc lớp không
 const checkTutorInClass = async (tutorId, classInfoId) => {
-  const classTutor = await ClassTutor.findOne({
-    tutor_id: tutorId,
-    classInfo_id: classInfoId
-  });
-  return classTutor !== null;
+  try {
+    console.log('Checking tutor in class:', {
+      tutorId,
+      classInfoId
+    });
+
+    const classTutor = await ClassTutor.findOne({
+      tutor_id: tutorId,
+      classInfo_id: classInfoId
+    });
+
+    console.log('ClassTutor check result:', classTutor);
+
+    return classTutor !== null;
+  } catch (error) {
+    console.error('Error in checkTutorInClass:', error);
+    return false;
+  }
 };
 
 // Tạo submission mới
@@ -191,9 +206,29 @@ exports.gradeSubmission = async (req, res) => {
   try {
     const { id } = req.params;
     const { score, feedback, file } = req.body;
-    const tutor_id = req.user.tutor_id; // Lấy từ middleware auth
+    const user = req.user;
 
-    // Kiểm tra submission tồn tại
+    console.log('Grading submission:', {
+      submission_id: id,
+      user_id: user._id,
+      role: user.role
+    });
+
+    // Tìm tutor record
+    let tutor = null;
+    if (user.role === 'tutor') {
+      tutor = await Tutor.findOne({ user_id: user._id });
+      if (!tutor) {
+        console.log('Tutor not found for user:', user._id);
+        return res.status(403).json({ error: 'Không tìm thấy thông tin giảng viên' });
+      }
+      console.log('Found tutor:', {
+        tutor_id: tutor._id,
+        user_id: tutor.user_id
+      });
+    }
+
+    // Tìm submission
     const submission = await Submission.findById(id)
       .populate({
         path: 'assignment_id',
@@ -207,10 +242,23 @@ exports.gradeSubmission = async (req, res) => {
       return res.status(404).json({ error: 'Không tìm thấy bài nộp' });
     }
 
-    // Kiểm tra giảng viên có thuộc lớp không
-    const isTutorInClass = await checkTutorInClass(tutor_id, submission.assignment_id.classInfo_id._id);
-    if (!isTutorInClass) {
-      return res.status(403).json({ error: 'Bạn không có quyền chấm điểm bài tập này' });
+    // Kiểm tra quyền truy cập
+    if (user.role === 'tutor') {
+      const classTutor = await ClassTutor.findOne({
+        tutor_id: tutor._id,
+        classInfo_id: submission.assignment_id.classInfo_id._id
+      });
+
+      console.log('Class tutor check:', {
+        tutor_id: tutor._id,
+        classInfo_id: submission.assignment_id.classInfo_id._id,
+        found: !!classTutor,
+        classTutor: classTutor
+      });
+
+      if (!classTutor) {
+        return res.status(403).json({ error: 'Bạn không phải là giảng viên của lớp học này' });
+      }
     }
 
     // Kiểm tra điểm hợp lệ
@@ -222,8 +270,8 @@ exports.gradeSubmission = async (req, res) => {
     const gradeData = {
       score,
       feedback,
-      grade_at: new Date(),
-      graded_by: tutor_id
+      graded_at: new Date(),
+      graded_by: tutor._id
     };
 
     // Nếu có file đính kèm (feedback file)
@@ -238,18 +286,46 @@ exports.gradeSubmission = async (req, res) => {
 
     // Populate thêm thông tin giảng viên chấm điểm
     const populatedSubmission = await Submission.findById(submission._id)
-      .populate('student_id', 'student_code')
-      .populate('grade.graded_by', 'tutor_code');
+      .populate({
+        path: 'student_id',
+        select: 'student_code',
+        populate: {
+          path: 'user_id',
+          select: 'first_name last_name email avatar_path'
+        }
+      })
+      .populate({
+        path: 'assignment_id',
+        select: 'title description duedate',
+        populate: {
+          path: 'classInfo_id',
+          select: 'code course_id',
+          populate: {
+            path: 'course_id',
+            select: 'name code'
+          }
+        }
+      })
+      .populate({
+        path: 'grade.graded_by',
+        select: 'tutor_code',
+        populate: {
+          path: 'user_id',
+          select: 'first_name last_name email avatar_path'
+        }
+      });
+
+    console.log('Populated submission data:', populatedSubmission);
 
     res.status(200).json({
-      message: 'Chấm điểm thành công',
-      submission: populatedSubmission
+      data: populatedSubmission.toObject()
     });
   } catch (error) {
     // Nếu có lỗi và đã upload file, xóa file
     if (req.file) {
       fs.unlinkSync(req.file.path);
     }
+    console.error('Error grading submission:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -299,6 +375,136 @@ exports.downloadAttachment = async (req, res) => {
 
     res.download(filePath, attachment.file_name);
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Lấy thông tin một bài nộp
+exports.getSubmissionById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user;
+
+    console.log('User info:', {
+      role: user.role,
+      user_id: user._id
+    });
+
+    // Tìm tutor record trước khi query submission
+    let tutor = null;
+    if (user.role === 'tutor') {
+      tutor = await Tutor.findOne({ user_id: user._id });
+      if (!tutor) {
+        console.log('Tutor not found for user:', user._id);
+        return res.status(403).json({ error: 'Không tìm thấy thông tin giảng viên' });
+      }
+      console.log('Found tutor:', {
+        tutor_id: tutor._id,
+        user_id: tutor.user_id
+      });
+    }
+
+    const submission = await Submission.findById(id)
+      .populate({
+        path: 'student_id',
+        select: 'student_code',
+        populate: {
+          path: 'user_id',
+          select: 'first_name last_name email avatar_path'
+        }
+      })
+      .populate({
+        path: 'assignment_id',
+        select: 'title description duedate',
+        populate: {
+          path: 'classInfo_id',
+          select: 'code course_id',
+          populate: {
+            path: 'course_id',
+            select: 'name code'
+          }
+        }
+      })
+      .populate({
+        path: 'attachments',
+        select: 'file_name file_path file_type file_size'
+      });
+
+    if (!submission) {
+      return res.status(404).json({ error: 'Không tìm thấy bài nộp' });
+    }
+
+    console.log('Submission info:', {
+      classInfo_id: submission.assignment_id?.classInfo_id?._id,
+      student_id: submission.student_id?._id,
+      user_id: submission.student_id?.user_id?._id,
+      assignment_id: submission.assignment_id?._id,
+      course_id: submission.assignment_id?.classInfo_id?.course_id?._id
+    });
+
+    // Kiểm tra quyền truy cập
+    if (user.role === 'student') {
+      if (submission.student_id.user_id.toString() !== user._id.toString()) {
+        return res.status(403).json({ error: 'Không có quyền truy cập' });
+      }
+    } else if (user.role === 'tutor') {
+      // Kiểm tra xem tutor có trong lớp học không
+      const classTutor = await ClassTutor.findOne({
+        tutor_id: tutor._id,
+        classInfo_id: submission.assignment_id.classInfo_id._id
+      });
+
+      console.log('Class tutor check:', {
+        tutor_id: tutor._id,
+        classInfo_id: submission.assignment_id.classInfo_id._id,
+        found: !!classTutor,
+        classTutor: classTutor
+      });
+
+      if (!classTutor) {
+        return res.status(403).json({ error: 'Bạn không phải là giảng viên của lớp học này' });
+      }
+    }
+
+    // Populate thêm thông tin grade nếu có
+    if (submission.grade) {
+      console.log('Before populate grade:', submission.grade);
+      
+      await submission.populate({
+        path: 'grade.graded_by',
+        model: 'tutor',
+        select: 'tutor_code user_id',
+        populate: {
+          path: 'user_id',
+          model: 'user',
+          select: 'first_name last_name email avatar_path'
+        }
+      });
+
+      console.log('After populate grade:', submission.grade);
+      console.log('Tutor user info:', submission.grade?.graded_by?.user_id);
+    }
+
+    console.log('Populated submission data:', submission);
+
+    // Format response data theo cấu trúc mà frontend mong đợi
+    const responseData = {
+      data: {
+        ...submission.toObject(),
+        grade: submission.grade ? {
+          ...submission.grade,
+          graded_by: submission.grade.graded_by ? {
+            ...submission.grade.graded_by.toObject(),
+            user_id: submission.grade.graded_by.user_id.toObject()
+          } : null
+        } : null
+      }
+    };
+
+    console.log('Final response data:', responseData);
+    res.status(200).json(responseData);
+  } catch (error) {
+    console.error('Error getting submission by id:', error);
     res.status(500).json({ error: error.message });
   }
 };

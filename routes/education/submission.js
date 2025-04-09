@@ -15,6 +15,9 @@ router.post('/',
 // Lấy danh sách bài nộp của bài tập
 router.get('/assignment/:assignment_id', auth, submissionController.getSubmissionsByAssignment);
 
+// Lấy thông tin một bài nộp
+router.get('/:id', auth, submissionController.getSubmissionById);
+
 // Chấm điểm bài nộp
 router.post('/:id/grade', auth, roleCheck(['tutor']), submissionController.gradeSubmission);
 

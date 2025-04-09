@@ -68,7 +68,7 @@ const submissionSchema = new mongoose.Schema({
     feedback: {
       type: String,
     },
-    grade_at: {
+    graded_at: {
       type: Date
     },
     graded_by: {
