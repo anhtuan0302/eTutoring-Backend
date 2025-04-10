@@ -29,8 +29,8 @@ const calculateStatusClassSchedule = (startDate, endDate) => {
 
 // Khởi tạo cron jobs
 const initCronJobs = () => {
-  // Cập nhật status của lớp học mỗi phút
-  cron.schedule('* * * * *', async () => {
+  // Cập nhật status của lớp học mỗi giờ
+  cron.schedule('0 * * * *', async () => {
     try {
       const classes = await ClassInfo.find();
       const schedules = await ClassSchedule.find();
