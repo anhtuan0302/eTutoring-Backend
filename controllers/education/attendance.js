@@ -4,15 +4,26 @@ const Enrollment = require("../../models/education/enrollment");
 const ClassTutor = require("../../models/education/classTutor");
 
 const checkAttendancePermission = async (userId, userRole, classInfoId, schedule) => {
-  // Admin và staff luôn có quyền
+  // Admin and staff always have permission
   if (userRole === 'admin' || userRole === 'staff') {
     return {
       hasPermission: true
     };
   }
 
-  // Nếu là giảng viên, kiểm tra xem có phải giảng viên của lớp không
+  // For tutors, check if they are assigned to the class
   if (userRole === 'tutor') {
+    // Ensure classInfoId is valid
+    if (!classInfoId) {
+      return {
+        hasPermission: false,
+        message: 'Class info not found'
+      };
+    }
+    
+    // Make sure we're using the string representation if it's an ObjectId
+    const classInfoIdStr = classInfoId.toString();
+
     const isTutor = await ClassTutor.findOne({
       classInfo_id: classInfoId,
       tutor_id: userId
@@ -21,7 +32,7 @@ const checkAttendancePermission = async (userId, userRole, classInfoId, schedule
     if (!isTutor) {
       return {
         hasPermission: false,
-        message: 'Bạn không phải là giảng viên của lớp học này'
+        message: 'You are not a tutor of this class'
       };
     }
 
@@ -33,7 +44,7 @@ const checkAttendancePermission = async (userId, userRole, classInfoId, schedule
     if (now > attendanceDeadline) {
       return {
         hasPermission: false,
-        message: 'Đã quá thời hạn điểm danh (1 ngày sau buổi học)'
+        message: 'Attendance deadline has passed (1 day after the class)'
       };
     }
 
@@ -44,7 +55,7 @@ const checkAttendancePermission = async (userId, userRole, classInfoId, schedule
 
   return {
     hasPermission: false,
-    message: 'Bạn không có quyền điểm danh'
+    message: 'User does not have permission to take attendance'
   };
 };
 
@@ -278,20 +289,29 @@ exports.deleteAttendance = async (req, res) => {
 // Điểm danh hàng loạt
 exports.bulkAttendance = async (req, res) => {
   try {
-    const { class_schedule_id, attendances } = req.body;
+    const { class_schedule_id, attendances, tutor_id } = req.body;
     
-    // Kiểm tra lịch học tồn tại
+    // Check if schedule exists
     const schedule = await ClassSchedule.findById(class_schedule_id)
       .populate('classInfo_id');
+    
     if (!schedule) {
-      return res.status(404).json({ error: 'Không tìm thấy lịch học' });
+      return res.status(404).json({ error: 'Schedule not found' });
     }
 
-    // Kiểm tra quyền điểm danh
+    // Make sure we have a valid classInfo_id
+    if (!schedule.classInfo_id || (!schedule.classInfo_id._id && typeof schedule.classInfo_id !== 'string' && !schedule.classInfo_id.toString)) {
+      return res.status(400).json({ error: 'Invalid class info in schedule' });
+    }
+    
+    // Get the classInfo_id as an ObjectId or string
+    const classInfoId = schedule.classInfo_id._id || schedule.classInfo_id;
+
+    // Check attendance permission
     const permissionCheck = await checkAttendancePermission(
-      req.user._id,
+      tutor_id, // Use tutor_id from request instead of req.user._id
       req.user.role,
-      schedule.classInfo_id._id,
+      classInfoId,
       schedule
     );
 
@@ -302,24 +322,24 @@ exports.bulkAttendance = async (req, res) => {
     const results = [];
     const errors = [];
     
-    // Xử lý từng sinh viên
+    // Process each student's attendance
     for (const item of attendances) {
       try {        
-        // Kiểm tra sinh viên đã đăng ký lớp học chưa
+        // Check if student is enrolled in the class
         const enrollment = await Enrollment.findOne({ 
-          classInfo_id: schedule.classInfo_id._id,
+          classInfo_id: classInfoId,
           student_id: item.student_id
         });
         
         if (!enrollment) {
           errors.push({
             student_id: item.student_id,
-            error: 'Sinh viên chưa đăng ký lớp học này'
+            error: 'Student is not enrolled in this class'
           });
           continue;
         }
 
-        // Tạo hoặc cập nhật điểm danh
+        // Create or update attendance
         const attendance = await Attendance.findOneAndUpdate(
           {
             class_schedule_id: class_schedule_id,
@@ -327,7 +347,7 @@ exports.bulkAttendance = async (req, res) => {
           },
           {
             status: item.status,
-            created_by: req.user._id
+            created_by: tutor_id // Use tutor_id from request
           },
           {
             new: true,
@@ -337,7 +357,7 @@ exports.bulkAttendance = async (req, res) => {
           }
         );
 
-        // Populate thông tin chi tiết
+        // Populate detailed information
         await attendance.populate([
           {
             path: 'student_id',
@@ -354,7 +374,6 @@ exports.bulkAttendance = async (req, res) => {
         
         results.push(attendance);
       } catch (error) {
-        console.error('Error processing student:', item.student_id, error);
         errors.push({
           student_id: item.student_id,
           error: error.message
@@ -368,7 +387,6 @@ exports.bulkAttendance = async (req, res) => {
       results
     });
   } catch (error) {
-    console.error('Bulk attendance error:', error);
     res.status(500).json({ error: error.message });
   }
 };
