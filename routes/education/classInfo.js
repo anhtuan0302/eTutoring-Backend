@@ -20,7 +20,7 @@ router.patch('/:id', auth, roleCheck(['admin', 'staff']), classInfoController.up
 router.delete('/:id', auth, roleCheck(['admin', 'staff']), classInfoController.deleteClass);
 
 // Get class students
-router.get('/:id/students', auth, roleCheck(['admin', 'staff', 'tutor']), classInfoController.getClassStudents);
+router.get('/:id/students', auth, roleCheck(['admin', 'staff', 'tutor', 'student']), classInfoController.getClassStudents);
 
 // Get class tutors
 router.get('/:id/tutors', auth, roleCheck(['admin', 'staff', 'tutor', 'student']), classInfoController.getClassTutors);

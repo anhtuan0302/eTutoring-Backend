@@ -8,10 +8,10 @@ const attendanceController = require('../../controllers/education/attendance');
 router.post('/', auth, roleCheck(['admin', 'tutor', 'staff']), attendanceController.createAttendance);
 
 // Lấy danh sách điểm danh của buổi học
-router.get('/schedule/:schedule_id', auth, roleCheck(['admin', 'tutor', 'staff']), attendanceController.getAttendanceBySchedule);
+router.get('/schedule/:schedule_id', auth, roleCheck(['admin', 'tutor', 'staff', 'student']), attendanceController.getAttendanceBySchedule);
 
 // Lấy lịch sử điểm danh của sinh viên trong lớp
-router.get('/class/:class_id/student/:student_id', auth, roleCheck(['admin', 'tutor', 'staff']), attendanceController.getStudentAttendance);
+router.get('/class/:class_id/student/:student_id', auth, roleCheck(['admin', 'tutor', 'staff', 'student']), attendanceController.getStudentAttendance);
 
 // Cập nhật điểm danh
 router.patch('/:id', auth, roleCheck(['admin', 'tutor', 'staff']), attendanceController.updateAttendance);

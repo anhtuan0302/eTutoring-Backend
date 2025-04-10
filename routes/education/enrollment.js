@@ -11,7 +11,7 @@ router.post('/', auth, roleCheck(['admin', 'staff']), enrollmentController.enrol
 router.get('/class/:classInfo_id', auth, roleCheck(['admin', 'tutor', 'staff']), enrollmentController.getStudentsByClass);
 
 // Lấy danh sách lớp học của sinh viên
-router.get('/student/:student_id', auth, roleCheck(['admin', 'tutor', 'staff']), enrollmentController.getClassesByStudent);
+router.get('/student/:student_id', auth, roleCheck(['admin', 'tutor', 'staff', 'student']), enrollmentController.getClassesByStudent);
 
 // Kiểm tra sinh viên đã đăng ký lớp học chưa
 router.get('/check/:class_id/:student_id', auth, roleCheck(['admin', 'tutor', 'staff']), enrollmentController.checkEnrollment);
