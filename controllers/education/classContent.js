@@ -45,17 +45,14 @@ exports.upload = multer({
 // Tạo nội dung mới
 exports.createContent = async (req, res) => {
   try {
-    console.log('Request body:', req.body);
-    console.log('Request files:', req.files);
-    console.log('Request file:', req.file);
-    console.log('Headers:', req.headers);
-    
-    const { classInfo_id, title, description, content_type, duedate } = req.body;
+    const { classInfo_id, title, description, content_type } = req.body;
+    // Support both duedate and due_date parameters
+    const dueDateValue = req.body.duedate || req.body.due_date;
     
     // Kiểm tra lớp học tồn tại
     const classInfo = await ClassInfo.findById(classInfo_id);
     if (!classInfo) {
-      return res.status(404).json({ error: 'Không tìm thấy lớp học' });
+      return res.status(404).json({ error: 'Class not found' });
     }
     
     // Xử lý files nếu có
@@ -66,17 +63,26 @@ exports.createContent = async (req, res) => {
       file_size: file.size
     })) || [];
     
-    console.log('Files received:', req.files);
-    console.log('Attachments created:', attachments);
-    
-    const classContent = new ClassContent({
+    // Create a new content object
+    const contentData = {
       classInfo_id,
       title,
       description,
       content_type,
-      duedate: content_type === 'assignment' ? duedate : undefined,
       attachments
-    });
+    };
+    
+    // Handle duedate for assignments
+    if (content_type === 'assignment' && dueDateValue) {
+      try {
+        // Handle different date formats that might be sent
+        contentData.duedate = new Date(dueDateValue);
+      } catch (err) {
+        return res.status(400).json({ error: 'Invalid date format for duedate' });
+      }
+    }
+    
+    const classContent = new ClassContent(contentData);
     
     await classContent.save();
 
@@ -170,14 +176,16 @@ exports.getContentById = async (req, res) => {
 // Cập nhật nội dung
 exports.updateContent = async (req, res) => {
   try {
-    const { title, description, duedate } = req.body;
+    const { title, description } = req.body;
+    // Support both duedate and due_date
+    const dueDateValue = req.body.duedate || req.body.due_date;
     
     const content = await ClassContent.findById(req.params.id);
     if (!content) {
-      return res.status(404).json({ error: 'Không tìm thấy nội dung' });
+      return res.status(404).json({ error: 'Content not found' });
     }
     
-    // Xử lý files mới nếu có
+    // Process new files if any
     if (req.files?.length > 0) {
       const newAttachments = req.files.map(file => ({
         file_name: file.originalname,
@@ -188,11 +196,15 @@ exports.updateContent = async (req, res) => {
       content.attachments.push(...newAttachments);
     }
     
-    // Cập nhật thông tin
+    // Update information
     if (title) content.title = title;
     if (description) content.description = description;
-    if (content.content_type === 'assignment' && duedate) {
-      content.duedate = duedate;
+    if (content.content_type === 'assignment' && dueDateValue) {
+      try {
+        content.duedate = new Date(dueDateValue);
+      } catch (err) {
+        return res.status(400).json({ error: 'Invalid date format for duedate' });
+      }
     }
     
     await content.save();
@@ -213,9 +225,15 @@ exports.updateContent = async (req, res) => {
     
     res.status(200).json(updatedContent);
   } catch (error) {
-    // Xóa files nếu có lỗi
+    // Delete files if error
     if (req.files) {
-      req.files.forEach(file => fs.unlinkSync(file.path));
+      req.files.forEach(file => {
+        try {
+          fs.unlinkSync(file.path);
+        } catch (unlinkError) {
+          console.error('Error deleting file:', unlinkError);
+        }
+      });
     }
     res.status(500).json({ error: error.message });
   }
@@ -250,27 +268,41 @@ exports.removeAttachment = async (req, res) => {
   }
 };
 
-// Xóa nội dung
+// Delete content
 exports.deleteContent = async (req, res) => {
   try {
     const content = await ClassContent.findById(req.params.id);
     if (!content) {
-      return res.status(404).json({ error: 'Không tìm thấy nội dung' });
+      return res.status(404).json({ error: 'Content not found' });
     }
 
-    // Xóa các file đính kèm
-    content.attachments.forEach(attachment => {
-      try {
-        fs.unlinkSync(attachment.file_path);
-      } catch (err) {
-        console.error('Lỗi khi xóa file:', err);
+    // Delete attached files
+    if (content.attachments && content.attachments.length > 0) {
+      for (const attachment of content.attachments) {
+        try {
+          if (fs.existsSync(attachment.file_path)) {
+            fs.unlinkSync(attachment.file_path);
+          }
+        } catch (err) {
+          console.error(`Error deleting file ${attachment.file_path}:`, err);
+        }
       }
-    });
+    }
 
-    await content.deleteOne();
-    res.status(200).json({ message: 'Đã xóa nội dung thành công' });
+    // Delete the content from database
+    await ClassContent.findByIdAndDelete(req.params.id);
+    
+    res.status(200).json({ 
+      message: 'Content deleted successfully',
+      content_type: content.content_type,
+      title: content.title
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error deleting content:', error);
+    res.status(500).json({ 
+      error: error.message,
+      details: 'Failed to delete content. Please try again.'
+    });
   }
 };
 
